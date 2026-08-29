@@ -60,6 +60,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw_media_lifecycle" {
     id     = "archive-raw-to-glacier-and-expire"
     status = "Enabled"
 
+    filter {}
+
     transition {
       days          = 30
       storage_class = "GLACIER_IR"
