@@ -13,11 +13,14 @@ dist
 dist-ssr
 *.local
 
-# Agents & Skills
+# Agents, Skills & Plans
 .agents/
 .agent/
 _agents/
 _agent/
+PLAN.md
+plan.md
+*plan.md
 
 # Editor directories and files
 .vscode/*
