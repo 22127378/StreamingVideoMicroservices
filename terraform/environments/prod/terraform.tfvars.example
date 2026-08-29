@@ -1,0 +1,14 @@
+aws_region         = "us-east-1"
+project_name       = "streamforge"
+cluster_name       = "streamforge-eks-cluster"
+kubernetes_version = "1.30"
+k8s_namespace      = "streamforge"
+vpc_cidr           = "10.0.0.0/16"
+single_nat_gateway = true
+
+common_tags = {
+  Project     = "StreamForge"
+  Environment = "Production"
+  ManagedBy   = "Terraform"
+  Platform    = "AWS-EKS"
+}
