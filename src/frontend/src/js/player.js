@@ -169,7 +169,24 @@ class PlayerController {
     `;
 
     this.video = document.getElementById('streamforge-video');
-    this.initHls(channel.playback_url || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+
+    // Check if watching active local hardware camera / screen broadcast
+    const { webrtcHub } = await import('./webrtcHub.js');
+    if (channel.is_user_broadcast && webrtcHub.hasActiveStream()) {
+      console.log('[PlayerController] Playing Real-time Hardware Device Broadcast Stream (Camera/Screen).');
+      if (this.hls) this.hls.destroy();
+      this.video.srcObject = webrtcHub.getCurrentStream();
+      this.video.play().catch(() => {});
+      this.updatePlayPauseIcon(true);
+
+      const statsRes = document.getElementById('stat-resolution');
+      const statsBitrate = document.getElementById('stat-bitrate');
+      if (statsRes) statsRes.textContent = '1920x1080 (Real Device Stream)';
+      if (statsBitrate) statsBitrate.textContent = 'Direct Hardware Capture (0ms Latency)';
+    } else {
+      this.initHls(channel.playback_url || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+    }
+
     this.bindPlayerEvents();
 
     // Mount Live Chat component

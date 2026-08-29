@@ -228,15 +228,35 @@ class ApiClient {
 
   // --- Channels Endpoints ---
   async getChannels() {
+    // 1. Get user active livestreams from shared store
+    const userLivestreams = JSON.parse(localStorage.getItem('streamforge_user_live_streams') || '[]');
+
     try {
       const data = await this.request('/channels');
-      return data.channels && data.channels.length > 0 ? data.channels : MOCK_CHANNELS;
+      const backendChannels = data.channels && data.channels.length > 0 ? data.channels : MOCK_CHANNELS;
+      // Merge user live streams at the top
+      return [...userLivestreams, ...backendChannels.filter(bc => !userLivestreams.some(ul => ul.channel_id === bc.channel_id))];
     } catch (err) {
-      return MOCK_CHANNELS;
+      return [...userLivestreams, ...MOCK_CHANNELS.filter(mc => !userLivestreams.some(ul => ul.channel_id === mc.channel_id))];
     }
   }
 
   async getChannelById(channelId) {
+    const userLivestreams = JSON.parse(localStorage.getItem('streamforge_user_live_streams') || '[]');
+    const userLive = userLivestreams.find((c) => c.channel_id === channelId || c.streamer_username === channelId);
+    if (userLive) return userLive;
+
+    // Check current user profile
+    const savedUser = localStorage.getItem('streamforge_current_user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.channel && (parsed.channel.channel_id === channelId || parsed.user?.userId === channelId)) {
+          return parsed.channel;
+        }
+      } catch (e) {}
+    }
+
     try {
       const data = await this.request(`/channels/${channelId}`);
       return data.channel;
