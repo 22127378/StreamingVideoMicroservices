@@ -1,0 +1,164 @@
+/* ==============================================================================
+   StreamForge Design System & Core Tokens (Twitch-Inspired Dark Theme)
+   ============================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  /* Color Palette - Dark Gaming Theme */
+  --bg-base: #0e0e10;
+  --bg-primary: #18181b;
+  --bg-secondary: #1f1f23;
+  --bg-surface: #26262c;
+  --bg-surface-hover: #323239;
+  --bg-surface-active: #3a3a43;
+
+  /* Accent Colors */
+  --accent-purple: #9146ff;
+  --accent-purple-hover: #772ce8;
+  --accent-purple-light: #bf94ff;
+  --accent-purple-glow: rgba(145, 70, 255, 0.35);
+
+  --accent-cyan: #00f0ff;
+  --accent-cyan-glow: rgba(0, 240, 255, 0.3);
+
+  --live-red: #eb0400;
+  --live-red-glow: rgba(235, 4, 0, 0.4);
+
+  --color-success: #00f59b;
+  --color-warning: #ffb800;
+  --color-danger: #ff4655;
+
+  /* Text Colors */
+  --text-primary: #efeff1;
+  --text-secondary: #adadb8;
+  --text-muted: #70707c;
+  --text-inverse: #0e0e10;
+
+  /* Borders & Dividers */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.15);
+  --border-accent: rgba(145, 70, 255, 0.4);
+
+  /* Elevation & Shadows */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 20px var(--accent-purple-glow);
+
+  /* Layout Dimensions */
+  --navbar-height: 56px;
+  --sidebar-width: 240px;
+  --sidebar-width-collapsed: 60px;
+  --chat-width: 340px;
+
+  /* Radius & Transitions */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Global Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  border: none;
+  outline: none;
+  background: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Custom Minimalist Dark Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-medium);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Main Application Layout Shell Grid */
+#app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app-body {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: calc(100vh - var(--navbar-height));
+  overflow: hidden;
+  position: relative;
+}
+
+#main-content {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--bg-base);
+  position: relative;
+  scroll-behavior: smooth;
+}
+
+/* Micro-animations */
+@keyframes pulseLive {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; filter: drop-shadow(0 0 6px var(--live-red)); }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn var(--transition-normal) forwards;
+}
