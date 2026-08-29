@@ -63,6 +63,10 @@ app.use('/api/vods', vodRoutes);
 // Create HTTP Server for both Express REST API and WebSocket Gateway
 const server = http.createServer(app);
 
+// Initialize WebSocket Live Chat Gateway
+const chatGateway = require('./websocket/chatGateway');
+chatGateway.init(server);
+
 // Global Error Handler Middleware
 app.use(errorHandler);
 
@@ -70,7 +74,8 @@ if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {
     console.log(`🚀 [StreamForge API] Server running on port ${PORT}`);
     console.log(`📡 [Health Check] Available at http://localhost:${PORT}/health`);
+    console.log(`💬 [Live Chat WS] WebSocket Gateway listening at ws://localhost:${PORT}/ws`);
   });
 }
 
-module.exports = { app, server };
+module.exports = { app, server, chatGateway };
