@@ -49,6 +49,13 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Mount Routes
+const authRoutes = require('./routes/authRoutes');
+const channelRoutes = require('./routes/channelRoutes');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/channels', channelRoutes);
+
 // Create HTTP Server for both Express REST API and WebSocket Gateway
 const server = http.createServer(app);
 
