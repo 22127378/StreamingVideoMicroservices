@@ -1,6 +1,6 @@
 /**
  * WebSocket Live Chat Gateway & Real-time Viewer Presence Tracker
- * Manages channel chat rooms, real-time messaging, emotes, user badges, and viewer counts.
+ * Manages channel chat rooms, real-time messaging, user roles/badges, and viewer counts.
  */
 
 const { WebSocketServer, WebSocket } = require('ws');
@@ -8,17 +8,6 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { JWT_SECRET } = require('../middlewares/authMiddleware');
 const dynamoService = require('../services/dynamoService');
-
-// Predefined Emotes dictionary
-const EMOTES_CATALOG = {
-  ':pog:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f632.png',
-  ':kekw:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f923.png',
-  ':hype:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f389.png',
-  ':heart:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/2764.png',
-  ':fire:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f525.png',
-  ':gg:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f3c6.png',
-  ':cool:': 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/1f60e.png'
-};
 
 class ChatGateway {
   constructor() {
@@ -56,7 +45,7 @@ class ChatGateway {
       clearInterval(this.heartbeatInterval);
     });
 
-    console.log('⚡ [ChatGateway] WebSocket Server initialized on path /ws');
+    console.log('[ChatGateway] WebSocket Server initialized on path /ws');
   }
 
   handleConnection(ws, req) {
@@ -69,7 +58,7 @@ class ChatGateway {
       userId: `guest_${uuidv4().slice(0, 8)}`,
       username: `Guest_${Math.floor(1000 + Math.random() * 9000)}`,
       displayName: `Guest_${Math.floor(1000 + Math.random() * 9000)}`,
-      avatarUrl: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=guest_${Date.now()}`,
       badges: [],
       isGuest: true
     };
@@ -125,7 +114,6 @@ class ChatGateway {
       data: {
         user: meta,
         channelId,
-        emotes: EMOTES_CATALOG,
         viewerCount: this.getRoomViewerCount(channelId)
       }
     }));
@@ -183,16 +171,6 @@ class ChatGateway {
           meta.channelId = msg.data.channelId;
           this.joinRoom(meta.channelId, ws);
         }
-        break;
-
-      case 'SEND_REACTION':
-        this.broadcastToRoom(meta.channelId, {
-          type: 'REACTION_FLOAT',
-          data: {
-            emote: msg.data.emote || '❤️',
-            userId: meta.userId
-          }
-        });
         break;
 
       default:

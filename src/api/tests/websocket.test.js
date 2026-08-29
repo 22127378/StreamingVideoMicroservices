@@ -32,7 +32,7 @@ test('WebSocket Chat Gateway connects, sends INIT_CONNECTED and broadcasts messa
   // Client 1 sends a chat message
   client1.send(JSON.stringify({
     type: 'CHAT_MESSAGE',
-    data: { text: 'Hello StreamForge community! :hype:' }
+    data: { text: 'Hello StreamForge community!' }
   }));
 
   // Wait a bit for message propagation
@@ -40,7 +40,7 @@ test('WebSocket Chat Gateway connects, sends INIT_CONNECTED and broadcasts messa
 
   const chatMsg = client1Messages.find(m => m.type === 'CHAT_MESSAGE');
   assert.ok(chatMsg);
-  assert.strictEqual(chatMsg.data.text, 'Hello StreamForge community! :hype:');
+  assert.strictEqual(chatMsg.data.text, 'Hello StreamForge community!');
   assert.strictEqual(chatMsg.data.channelId, 'test_channel');
 
   client1.close();

@@ -72,9 +72,9 @@ app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {
-    console.log(`🚀 [StreamForge API] Server running on port ${PORT}`);
-    console.log(`📡 [Health Check] Available at http://localhost:${PORT}/health`);
-    console.log(`💬 [Live Chat WS] WebSocket Gateway listening at ws://localhost:${PORT}/ws`);
+    console.log(`[StreamForge API] Server running on port ${PORT}`);
+    console.log(`[Health Check] Available at http://localhost:${PORT}/health`);
+    console.log(`[Live Chat WS] WebSocket Gateway listening at ws://localhost:${PORT}/ws`);
   });
 }
 
