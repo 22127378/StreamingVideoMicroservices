@@ -439,30 +439,76 @@ class StreamForgeApp {
     });
   }
 
+  showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.style.padding = '12px 18px';
+    toast.style.borderRadius = '8px';
+    toast.style.fontSize = '0.9rem';
+    toast.style.fontWeight = '600';
+    toast.style.boxShadow = '0 8px 24px rgba(0,0,0,0.6)';
+    toast.style.display = 'flex';
+    toast.style.alignItems = 'center';
+    toast.style.gap = '8px';
+    toast.style.pointerEvents = 'auto';
+    toast.style.animation = 'fadeIn 0.25s ease';
+    toast.style.backdropFilter = 'blur(10px)';
+
+    if (type === 'success') {
+      toast.style.background = 'rgba(0, 245, 155, 0.15)';
+      toast.style.border = '1px solid #00f59b';
+      toast.style.color = '#00f59b';
+    } else {
+      toast.style.background = 'rgba(255, 70, 85, 0.15)';
+      toast.style.border = '1px solid #ff4655';
+      toast.style.color = '#ff4655';
+    }
+
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(-6px)';
+      toast.style.transition = 'all 0.3s ease';
+      setTimeout(() => toast.remove(), 300);
+    }, 4000);
+  }
+
   bindAuthModalEvents() {
     const modal = document.getElementById('auth-modal');
+    const modalTitle = document.getElementById('auth-modal-header-title');
     const openLoginBtn = document.getElementById('btn-open-login');
     const openRegBtn = document.getElementById('btn-open-register');
+    const closeBtn = document.getElementById('btn-close-modal');
     const tabLogin = document.getElementById('modal-tab-login');
     const tabReg = document.getElementById('modal-tab-register');
     const formLogin = document.getElementById('form-login');
     const formReg = document.getElementById('form-register');
     const alertBox = document.getElementById('auth-alert');
     const logoutBtn = document.getElementById('btn-logout');
+    const linkSwitchReg = document.getElementById('link-switch-to-register');
+    const linkSwitchLogin = document.getElementById('link-switch-to-login');
 
     const openModal = (mode = 'login') => {
       modal.classList.add('open');
       alertBox.style.display = 'none';
       if (mode === 'login') {
+        if (modalTitle) modalTitle.textContent = 'Log in to StreamForge';
         tabLogin.classList.add('active');
         tabReg.classList.remove('active');
         formLogin.style.display = 'flex';
         formReg.style.display = 'none';
+        setTimeout(() => document.getElementById('login-identifier')?.focus(), 100);
       } else {
+        if (modalTitle) modalTitle.textContent = 'Create a StreamForge Account';
         tabReg.classList.add('active');
         tabLogin.classList.remove('active');
         formReg.style.display = 'flex';
         formLogin.style.display = 'none';
+        setTimeout(() => document.getElementById('reg-username')?.focus(), 100);
       }
     };
 
@@ -473,8 +519,11 @@ class StreamForgeApp {
 
     openLoginBtn?.addEventListener('click', () => openModal('login'));
     openRegBtn?.addEventListener('click', () => openModal('register'));
+    closeBtn?.addEventListener('click', () => closeModal());
     tabLogin?.addEventListener('click', () => openModal('login'));
     tabReg?.addEventListener('click', () => openModal('register'));
+    linkSwitchReg?.addEventListener('click', () => openModal('register'));
+    linkSwitchLogin?.addEventListener('click', () => openModal('login'));
 
     modal?.addEventListener('click', (e) => {
       if (e.target === modal) closeModal();
@@ -497,6 +546,7 @@ class StreamForgeApp {
         this.currentChannel = data.channel;
         this.renderUserHeader(true);
         closeModal();
+        this.showToast(`Welcome back, ${data.user.displayName || data.user.username}!`);
         if (this.currentView === 'studio') {
           this.renderStudioView();
         }
@@ -521,6 +571,7 @@ class StreamForgeApp {
         this.currentChannel = data.channel;
         this.renderUserHeader(true);
         closeModal();
+        this.showToast(`Account created! Welcome to StreamForge, ${data.user.displayName}!`);
         if (this.currentView === 'studio') {
           this.renderStudioView();
         }
@@ -537,6 +588,7 @@ class StreamForgeApp {
       this.currentUser = null;
       this.currentChannel = null;
       this.renderUserHeader(false);
+      this.showToast('You have been signed out.');
       this.navigate('browse');
     });
   }

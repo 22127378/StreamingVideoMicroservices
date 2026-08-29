@@ -57,7 +57,7 @@
 
         <!-- Authenticated User Profile Menu -->
         <div id="auth-logged" class="user-profile-group" style="display: none;">
-          <div class="channel-item" id="user-menu-trigger" style="padding: 4px 8px;">
+          <div class="channel-item" id="user-menu-trigger" style="padding: 4px 8px; cursor: pointer;" title="Open Creator Studio">
             <div class="channel-avatar-wrapper" style="width: 32px; height: 32px;">
               <img id="header-user-avatar" class="channel-avatar" src="" alt="User Avatar">
             </div>
@@ -106,38 +106,63 @@
     </div>
   </div>
 
+  <!-- Toast Notification Container -->
+  <div id="toast-container" style="position: fixed; top: 70px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
   <!-- Authentication Modal (Login / Register) -->
   <div class="modal-overlay" id="auth-modal">
     <div class="modal-container">
+      <!-- Modal Header -->
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg class="brand-icon-svg" style="width: 22px; height: 22px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span class="modal-title" id="auth-modal-header-title">Log in to StreamForge</span>
+        </div>
+        <button class="modal-close-btn" id="btn-close-modal" title="Close Modal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Tabs -->
       <div class="modal-tabs">
         <div class="modal-tab active" id="modal-tab-login">Log In</div>
         <div class="modal-tab" id="modal-tab-register">Sign Up</div>
       </div>
+
       <div class="modal-body">
-        <div id="auth-alert" style="display: none; padding: 10px; border-radius: 4px; font-size: 0.85rem;"></div>
+        <div id="auth-alert" style="display: none; padding: 10px 14px; border-radius: 4px; font-size: 0.85rem; line-height: 1.4;"></div>
 
         <!-- Login Form -->
         <form id="form-login" class="form-container">
           <div class="form-group">
             <label class="form-label">Username or Email</label>
-            <input type="text" class="form-input" id="login-identifier" required placeholder="Enter your username or email">
+            <input type="text" class="form-input" id="login-identifier" required placeholder="Enter username or email" autofocus>
           </div>
           <div class="form-group">
             <label class="form-label">Password</label>
             <input type="password" class="form-input" id="login-password" required placeholder="Enter password">
           </div>
-          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">Log In</button>
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px; height: 40px; font-size: 0.95rem;">Log In</button>
+          
+          <div style="text-align: center; margin-top: 14px; font-size: 0.85rem; color: var(--text-secondary);">
+            Don't have an account? <a href="javascript:void(0)" id="link-switch-to-register" style="color: var(--accent-purple-light); font-weight: 600;">Sign Up</a>
+          </div>
         </form>
 
         <!-- Register Form -->
         <form id="form-register" class="form-container" style="display: none;">
           <div class="form-group">
             <label class="form-label">Username</label>
-            <input type="text" class="form-input" id="reg-username" required placeholder="Choose a username">
+            <input type="text" class="form-input" id="reg-username" required placeholder="Choose a unique username" minlength="3">
           </div>
           <div class="form-group">
-            <label class="form-label">Display Name</label>
-            <input type="text" class="form-input" id="reg-displayname" placeholder="Channel Display Name">
+            <label class="form-label">Display Name (Channel Name)</label>
+            <input type="text" class="form-input" id="reg-displayname" placeholder="Channel Display Name (e.g. ProGamer)">
           </div>
           <div class="form-group">
             <label class="form-label">Email</label>
@@ -145,9 +170,13 @@
           </div>
           <div class="form-group">
             <label class="form-label">Password</label>
-            <input type="password" class="form-input" id="reg-password" required minlength="6" placeholder="Create password (6+ chars)">
+            <input type="password" class="form-input" id="reg-password" required minlength="6" placeholder="Create strong password (6+ chars)">
           </div>
-          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">Create Account</button>
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px; height: 40px; font-size: 0.95rem;">Create Account</button>
+          
+          <div style="text-align: center; margin-top: 14px; font-size: 0.85rem; color: var(--text-secondary);">
+            Already have an account? <a href="javascript:void(0)" id="link-switch-to-login" style="color: var(--accent-purple-light); font-weight: 600;">Log In</a>
+          </div>
         </form>
       </div>
     </div>
