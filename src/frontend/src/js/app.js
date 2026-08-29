@@ -137,16 +137,24 @@ class StreamForgeApp {
     this.renderSidebar();
   }
 
-  renderSidebar() {
+  async renderSidebar() {
     const followedContainer = document.getElementById('sidebar-followed-list');
     const recContainer = document.getElementById('sidebar-recommended-list');
     if (!followedContainer || !recContainer) return;
 
+    const followedChannels = await api.getFollowedChannels();
+    const followedIds = followedChannels.map(c => c.channel_id);
+    const recommendedChannels = this.channels.filter(c => !followedIds.includes(c.channel_id));
+
     // Render Followed List
-    followedContainer.innerHTML = this.channels.slice(0, 3).map((ch) => this.renderSidebarChannelItem(ch)).join('');
+    if (followedChannels.length > 0) {
+      followedContainer.innerHTML = followedChannels.map((ch) => this.renderSidebarChannelItem(ch)).join('');
+    } else {
+      followedContainer.innerHTML = `<div style="padding: 8px 12px; font-size: 0.75rem; color: var(--text-muted);">No followed channels yet</div>`;
+    }
 
     // Render Recommended List
-    recContainer.innerHTML = this.channels.slice(3).map((ch) => this.renderSidebarChannelItem(ch)).join('');
+    recContainer.innerHTML = recommendedChannels.map((ch) => this.renderSidebarChannelItem(ch)).join('');
 
     // Add click listeners to sidebar items
     document.querySelectorAll('.channel-item[data-channel-id]').forEach((el) => {

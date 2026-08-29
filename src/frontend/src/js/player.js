@@ -365,32 +365,42 @@ class PlayerController {
       }
     });
 
-    // Follow Button
-    followBtn?.addEventListener('click', async () => {
-      const textSpan = document.getElementById('follow-btn-text');
-      const isFollowing = textSpan.textContent === 'Following';
+    // Follow Button Initialization & Click
+    const isCurrentlyFollowing = api.isFollowing(this.currentChannel.channel_id);
+    const textSpan = document.getElementById('follow-btn-text');
+    if (isCurrentlyFollowing && followBtn && textSpan) {
+      textSpan.textContent = 'Following';
+      followBtn.classList.remove('btn-primary');
+      followBtn.classList.add('btn-secondary');
+    }
 
-      if (isFollowing) {
-        textSpan.textContent = 'Follow';
-        followBtn.classList.remove('btn-secondary');
-        followBtn.classList.add('btn-primary');
-      } else {
-        textSpan.textContent = 'Following';
+    followBtn?.addEventListener('click', async () => {
+      const res = await api.toggleFollow(this.currentChannel.channel_id, this.currentChannel);
+      const isNowFollowing = res.isFollowing;
+
+      if (isNowFollowing) {
+        if (textSpan) textSpan.textContent = 'Following';
         followBtn.classList.remove('btn-primary');
         followBtn.classList.add('btn-secondary');
+      } else {
+        if (textSpan) textSpan.textContent = 'Follow';
+        followBtn.classList.remove('btn-secondary');
+        followBtn.classList.add('btn-primary');
       }
 
-      try {
-        await api.toggleFollow(this.currentChannel.channel_id, this.currentChannel.viewer_count);
-      } catch (e) {
-        // Fallback smooth visual feedback
-      }
+      // Re-render sidebar to sync followed channels
+      import('./app.js').then(({ app }) => {
+        app.renderSidebar();
+        app.showToast(isNowFollowing ? `You are now following ${this.currentChannel.streamer_name}!` : `Unfollowed ${this.currentChannel.streamer_name}.`);
+      });
     });
 
     // Share Button
     shareBtn?.addEventListener('click', () => {
       navigator.clipboard?.writeText(window.location.href);
-      alert('Stream link copied to clipboard!');
+      import('./app.js').then(({ app }) => {
+        app.showToast('Stream link copied to clipboard!');
+      });
     });
   }
 

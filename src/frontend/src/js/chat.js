@@ -1,6 +1,6 @@
 /**
  * StreamForge Realtime Live Chat Controller
- * Manages WebSocket chat rooms, message stream, text badges, auto-scrolling, and viewer counting.
+ * Manages WebSocket chat rooms, BroadcastChannel multi-tab instant sync, badges, and auto-scrolling.
  */
 
 import { api } from './api.js';
@@ -8,20 +8,26 @@ import { api } from './api.js';
 class ChatController {
   constructor() {
     this.ws = null;
+    this.broadcastChannel = null;
     this.currentChannelId = null;
     this.messagesContainer = null;
     this.isAutoScroll = true;
     this.reconnectTimer = null;
+    this.demoInterval = null;
+    this.viewerCount = 1;
   }
 
   /**
-   * Mounts the live chat panel and connects to WebSocket.
+   * Mounts the live chat panel and connects to WebSocket & BroadcastChannel.
    * @param {string} channelId 
    */
-  mount(channelId) {
+  async mount(channelId) {
     this.currentChannelId = channelId;
     const container = document.getElementById('live-chat-column');
     if (!container) return;
+
+    const user = await api.getMe();
+    const displayName = user?.user?.displayName || user?.user?.username || 'Guest';
 
     container.innerHTML = `
       <div class="chat-panel">
@@ -30,14 +36,14 @@ class ChatController {
           <span class="chat-header-title">Stream Chat</span>
           <div class="chat-viewer-counter" title="Live Viewers Connected">
             <span class="live-pulse"></span>
-            <span id="chat-online-count">0</span>
+            <span id="chat-online-count">${this.viewerCount}</span>
           </div>
         </div>
 
         <!-- Chat Messages Container -->
         <div class="chat-messages-container" id="chat-messages-box">
           <div class="chat-system-message">
-            Welcome to the StreamForge live chat room! Please follow community guidelines and be respectful.
+            Welcome to the live stream chat room! Be respectful and follow community guidelines.
           </div>
         </div>
 
@@ -67,27 +73,74 @@ class ChatController {
           </form>
           <div class="chat-footer-meta">
             <span>Slow Mode: Off</span>
-            <span id="chat-user-indicator">Connected as Guest</span>
+            <span id="chat-user-indicator">Chatting as: <strong>${this.escapeHtml(displayName)}</strong></span>
           </div>
         </div>
       </div>
     `;
 
     this.messagesContainer = document.getElementById('chat-messages-box');
-    this.bindEvents();
+    this.bindEvents(user);
+    this.setupBroadcastChannel();
     this.connectWebSocket();
+    this.loadHistory();
   }
 
-  bindEvents() {
+  setupBroadcastChannel() {
+    if (this.broadcastChannel) {
+      this.broadcastChannel.close();
+    }
+
+    try {
+      this.broadcastChannel = new BroadcastChannel(`streamforge_chat_${this.currentChannelId}`);
+      this.broadcastChannel.onmessage = (event) => {
+        const payload = event.data;
+        if (payload && payload.type === 'CHAT_MESSAGE') {
+          this.appendMessage(payload.data, false);
+        } else if (payload && payload.type === 'VIEWER_JOIN') {
+          this.viewerCount++;
+          this.updateViewerCount(this.viewerCount);
+        }
+      };
+
+      // Announce viewer joined
+      this.broadcastChannel.postMessage({ type: 'VIEWER_JOIN', channelId: this.currentChannelId });
+    } catch (e) {
+      console.warn('[ChatController] BroadcastChannel not supported:', e);
+    }
+  }
+
+  loadHistory() {
+    try {
+      const historyKey = `streamforge_chat_history_${this.currentChannelId}`;
+      const saved = sessionStorage.getItem(historyKey);
+      if (saved) {
+        const messages = JSON.parse(saved);
+        messages.forEach((msg) => this.appendMessage(msg, false, false));
+      }
+    } catch (e) {}
+  }
+
+  saveMessageToHistory(msg) {
+    try {
+      const historyKey = `streamforge_chat_history_${this.currentChannelId}`;
+      const saved = JSON.parse(sessionStorage.getItem(historyKey) || '[]');
+      saved.push(msg);
+      if (saved.length > 50) saved.shift();
+      sessionStorage.setItem(historyKey, JSON.stringify(saved));
+    } catch (e) {}
+  }
+
+  bindEvents(user) {
     const form = document.getElementById('chat-send-form');
     const input = document.getElementById('chat-input-field');
     const scrollBtn = document.getElementById('btn-scroll-bottom');
 
-    form?.addEventListener('submit', (e) => {
+    form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
-      this.sendMessage(text);
+      await this.sendMessage(text, user);
       input.value = '';
     });
 
@@ -124,11 +177,7 @@ class ChatController {
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        console.log(`[ChatController] Connected to channel room: ${this.currentChannelId}`);
-        const userIndicator = document.getElementById('chat-user-indicator');
-        if (userIndicator) {
-          userIndicator.textContent = token ? 'Connected (Authenticated)' : 'Connected as Guest';
-        }
+        console.log(`[ChatController] WebSocket Connected to room: ${this.currentChannelId}`);
       };
 
       this.ws.onmessage = (event) => {
@@ -141,17 +190,16 @@ class ChatController {
       };
 
       this.ws.onclose = () => {
-        console.warn('[ChatController] WebSocket disconnected. Retrying in 4s...');
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = setTimeout(() => {
           if (window.location.hash.startsWith('#watch/')) {
             this.connectWebSocket();
           }
-        }, 4000);
+        }, 5000);
       };
 
       this.ws.onerror = () => {
-        // Provide demo simulated messages if server is offline
+        // Fallback to demo chat simulation if backend server is not running
         this.startDemoChatStream();
       };
     } catch (err) {
@@ -162,15 +210,17 @@ class ChatController {
   handleIncomingPayload(payload) {
     switch (payload.type) {
       case 'INIT_CONNECTED':
-        this.updateViewerCount(payload.data.viewerCount || 1);
+        this.viewerCount = payload.data.viewerCount || 1;
+        this.updateViewerCount(this.viewerCount);
         break;
 
       case 'VIEWER_COUNT_UPDATE':
-        this.updateViewerCount(payload.data.viewerCount);
+        this.viewerCount = payload.data.viewerCount;
+        this.updateViewerCount(this.viewerCount);
         break;
 
       case 'CHAT_MESSAGE':
-        this.appendMessage(payload.data);
+        this.appendMessage(payload.data, true);
         break;
 
       default:
@@ -178,52 +228,78 @@ class ChatController {
     }
   }
 
-  sendMessage(text) {
+  async sendMessage(text, user) {
+    const currentUser = user || (await api.getMe());
+    const username = currentUser?.user?.displayName || currentUser?.user?.username || 'Guest';
+    const isBroadcaster = currentUser?.channel?.channel_id === this.currentChannelId || currentUser?.user?.userId === this.currentChannelId;
+
+    const msg = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      channelId: this.currentChannelId,
+      sender: {
+        userId: currentUser?.user?.userId || 'usr_guest',
+        username: username,
+        displayName: username,
+        badges: isBroadcaster ? ['broadcaster', 'subscriber'] : ['subscriber'],
+        isGuest: !currentUser?.user
+      },
+      text: text,
+      color: isBroadcaster ? '#FF4655' : '#00F0FF',
+      timestamp: new Date().toISOString()
+    };
+
+    // 1. Send via WebSocket if open
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         type: 'CHAT_MESSAGE',
-        data: { text }
+        data: msg
       }));
-    } else {
-      // Fallback local append
-      this.appendMessage({
-        id: `local_${Date.now()}`,
-        sender: {
-          username: 'You',
-          badges: ['subscriber'],
-          isGuest: false
-        },
-        text,
-        color: '#9146FF',
-        timestamp: new Date().toISOString()
+    }
+
+    // 2. Broadcast to all open tabs / windows via BroadcastChannel
+    if (this.broadcastChannel) {
+      this.broadcastChannel.postMessage({
+        type: 'CHAT_MESSAGE',
+        data: msg
       });
     }
+
+    // 3. Render immediately locally
+    this.appendMessage(msg, true);
   }
 
-  appendMessage(msg) {
+  appendMessage(msg, shouldSave = true, shouldScroll = true) {
     if (!this.messagesContainer) return;
+
+    // Check duplicate by message ID
+    if (msg.id && document.getElementById(msg.id)) return;
 
     const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const badgesHtml = (msg.sender?.badges || []).map((b) => `<span class="badge-chat ${b}">${b}</span>`).join('');
     const usernameColor = msg.color || '#9146FF';
 
     const row = document.createElement('div');
+    if (msg.id) row.id = msg.id;
     row.className = 'chat-message-row';
     row.innerHTML = `
       <span class="chat-timestamp">${time}</span>
       ${badgesHtml}
-      <span class="chat-username" style="color: ${usernameColor};">${msg.sender?.displayName || msg.sender?.username || 'Guest'}:</span>
+      <span class="chat-username" style="color: ${usernameColor}; font-weight: 700;">${this.escapeHtml(msg.sender?.displayName || msg.sender?.username || 'Guest')}:</span>
       <span class="chat-text">${this.escapeHtml(msg.text)}</span>
     `;
 
     this.messagesContainer.appendChild(row);
 
-    // Keep max 200 messages in DOM for smooth performance
+    if (shouldSave) {
+      this.saveMessageToHistory(msg);
+    }
+
+    // Keep max 200 messages in DOM for ultra-smooth performance
     if (this.messagesContainer.children.length > 200) {
       this.messagesContainer.removeChild(this.messagesContainer.children[0]);
     }
 
-    if (this.isAutoScroll) {
+    if (this.isAutoScroll && shouldScroll) {
       this.scrollToBottom();
     }
   }
@@ -242,7 +318,6 @@ class ChatController {
   }
 
   startDemoChatStream() {
-    // Generate simulated dynamic chat messages for preview when offline
     if (this.demoInterval) clearInterval(this.demoInterval);
 
     const demoSenders = [
@@ -261,7 +336,7 @@ class ChatController {
       const randomText = randomSender.texts[Math.floor(Math.random() * randomSender.texts.length)];
 
       this.appendMessage({
-        id: `demo_${Date.now()}`,
+        id: `demo_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         sender: {
           username: randomSender.name,
           displayName: randomSender.name,
@@ -270,8 +345,8 @@ class ChatController {
         text: randomText,
         color: randomSender.color,
         timestamp: new Date().toISOString()
-      });
-    }, 4500);
+      }, false);
+    }, 6000);
   }
 
   escapeHtml(str) {
@@ -281,7 +356,7 @@ class ChatController {
   }
 
   formatNumber(num) {
-    if (!num) return '0';
+    if (!num) return '1';
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
     return num.toString();

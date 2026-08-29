@@ -274,15 +274,48 @@ class ApiClient {
     }
   }
 
-  async toggleFollow(channelId, currentFollowers) {
+  // --- Follow Channels Endpoints & Persistence ---
+  getFollowedChannelIds() {
     try {
-      return await this.request(`/channels/${channelId}/follow`, {
-        method: 'POST',
-        body: JSON.stringify({ currentFollowers })
-      });
+      return JSON.parse(localStorage.getItem('streamforge_followed_channel_ids') || '["chn_tenz", "chn_faker"]');
     } catch (e) {
-      return { isFollowing: true };
+      return ['chn_tenz', 'chn_faker'];
     }
+  }
+
+  isFollowing(channelId) {
+    const list = this.getFollowedChannelIds();
+    return list.includes(channelId);
+  }
+
+  async getFollowedChannels() {
+    const followedIds = this.getFollowedChannelIds();
+    const allChannels = await this.getChannels();
+    return allChannels.filter(c => followedIds.includes(c.channel_id));
+  }
+
+  async toggleFollow(channelId, channelObj = null) {
+    let list = this.getFollowedChannelIds();
+    const isNowFollowing = !list.includes(channelId);
+
+    if (isNowFollowing) {
+      list.push(channelId);
+    } else {
+      list = list.filter(id => id !== channelId);
+    }
+
+    localStorage.setItem('streamforge_followed_channel_ids', JSON.stringify(list));
+
+    // Try sync with Backend API
+    try {
+      if (isNowFollowing) {
+        await this.request(`/channels/${channelId}/follow`, { method: 'POST' });
+      } else {
+        await this.request(`/channels/${channelId}/unfollow`, { method: 'DELETE' });
+      }
+    } catch (e) {}
+
+    return { isFollowing: isNowFollowing };
   }
 
   // --- Stream & VOD Endpoints ---
