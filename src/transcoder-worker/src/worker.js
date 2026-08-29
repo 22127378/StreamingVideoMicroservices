@@ -100,6 +100,9 @@ class TranscoderWorker {
     const jobDir = path.join(WORKER_CONFIG.tempDir, streamId);
     const localRawFile = path.join(jobDir, 'input.mp4');
 
+const ffmpegPipeline = require('./services/ffmpegPipeline');
+const s3UploadService = require('./services/s3UploadService');
+
     try {
       this.currentJob = { streamId, key };
 
@@ -111,14 +114,31 @@ class TranscoderWorker {
       // 2. Download Raw Video from S3 Raw Bucket
       await s3DownloadService.downloadRawMedia(bucket, key, localRawFile);
 
-      console.log(`[Transcoder Worker] Successfully prepared raw media for streamId: ${streamId}`);
+      // 3. Run Multi-bitrate ABR HLS Transcoding Pipeline
+      const outputDir = path.join(jobDir, 'hls_output');
+      console.log(`[Transcoder Worker] Executing FFmpeg ABR Transcoding...`);
+      const transcodeResult = await ffmpegPipeline.transcodeToAbrHls(localRawFile, outputDir);
 
-      // 3. Mark successful download stage
-      console.log(`[Transcoder Worker] Ready for FFmpeg multi-bitrate ABR transcode pipeline (Feature 3.2).`);
+      // 4. Upload HLS Package (.m3u8, .ts, .jpg) to S3 HLS Delivery Bucket
+      const isVip = key.includes('/vip/') || false;
+      const uploadedKeys = await s3UploadService.uploadHlsPackage(outputDir, streamId, isVip);
 
-      // 4. Delete message from SQS upon successful processing
+      // 5. Update DynamoDB status to READY with playback URLs
+      const domain = process.env.CLOUDFRONT_DOMAIN || 'cdn.streamforge.net';
+      const cdnUrl = domain.startsWith('http') ? domain : `https://${domain}`;
+      const playbackUrl = `${cdnUrl}/hls/${isVip ? 'vip/' : ''}${streamId}/master.m3u8`;
+      const thumbnailUrl = `${cdnUrl}/hls/${isVip ? 'vip/' : ''}${streamId}/thumbnail.jpg`;
+
+      await this.updateStreamStatus(streamId, 'READY', {
+        playback_url: playbackUrl,
+        thumbnail_url: thumbnailUrl,
+        profiles_available: transcodeResult.profiles,
+        completed_at: new Date().toISOString()
+      });
+
+      // 6. Delete message from SQS upon successful completion
       await this.deleteMessage(receiptHandle);
-      console.log(`[Transcoder Worker] Completed job for streamId: ${streamId}`);
+      console.log(`[Transcoder Worker] Successfully transcoded & published streamId: ${streamId}`);
     } catch (error) {
       console.error(`[Transcoder Worker] Job failed for streamId: ${streamId}:`, error.message);
       await this.updateStreamStatus(streamId, 'FAILED', {
