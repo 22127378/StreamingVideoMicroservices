@@ -466,7 +466,10 @@ class StreamForgeApp {
       }
     };
 
-    const closeModal = () => modal.classList.remove('open');
+    const closeModal = () => {
+      modal.classList.remove('open');
+      alertBox.style.display = 'none';
+    };
 
     openLoginBtn?.addEventListener('click', () => openModal('login'));
     openRegBtn?.addEventListener('click', () => openModal('register'));
@@ -477,10 +480,15 @@ class StreamForgeApp {
       if (e.target === modal) closeModal();
     });
 
+    // User Avatar / Menu trigger in header -> navigate to Studio
+    document.getElementById('user-menu-trigger')?.addEventListener('click', () => {
+      this.navigate('studio');
+    });
+
     // Form Submissions
     formLogin?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const identifier = document.getElementById('login-identifier').value;
+      const identifier = document.getElementById('login-identifier').value.trim();
       const password = document.getElementById('login-password').value;
 
       try {
@@ -489,8 +497,11 @@ class StreamForgeApp {
         this.currentChannel = data.channel;
         this.renderUserHeader(true);
         closeModal();
+        if (this.currentView === 'studio') {
+          this.renderStudioView();
+        }
       } catch (err) {
-        alertBox.textContent = err.message || 'Login failed.';
+        alertBox.textContent = err.message || 'Login failed. Please check your credentials.';
         alertBox.style.display = 'block';
         alertBox.style.background = 'rgba(255, 70, 85, 0.2)';
         alertBox.style.color = '#ff4655';
@@ -499,9 +510,9 @@ class StreamForgeApp {
 
     formReg?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const username = document.getElementById('reg-username').value;
-      const displayName = document.getElementById('reg-displayname').value;
-      const email = document.getElementById('reg-email').value;
+      const username = document.getElementById('reg-username').value.trim();
+      const displayName = document.getElementById('reg-displayname').value.trim() || username;
+      const email = document.getElementById('reg-email').value.trim();
       const password = document.getElementById('reg-password').value;
 
       try {
@@ -510,6 +521,9 @@ class StreamForgeApp {
         this.currentChannel = data.channel;
         this.renderUserHeader(true);
         closeModal();
+        if (this.currentView === 'studio') {
+          this.renderStudioView();
+        }
       } catch (err) {
         alertBox.textContent = err.message || 'Registration failed.';
         alertBox.style.display = 'block';
@@ -519,7 +533,7 @@ class StreamForgeApp {
     });
 
     logoutBtn?.addEventListener('click', () => {
-      api.setToken(null);
+      api.logout();
       this.currentUser = null;
       this.currentChannel = null;
       this.renderUserHeader(false);
