@@ -26,12 +26,21 @@ namespace: streamforge
 resources:
   - namespace.yaml
   - configmap-and-secret.yaml
-  - api-deployment.yaml
-  - api-service.yaml
+  # ---- Microservices ----
+  - auth-service-deployment.yaml
+  - channel-service-deployment.yaml
+  - vod-service-deployment.yaml
+  - chat-service-deployment.yaml
+  # ---- Frontend ----
   - frontend-deployment.yaml
   - frontend-service.yaml
+  # ---- KEDA Transcoder ----
   - keda-transcoder-scaledobject.yaml
+  # ---- ALB Ingress ----
   - ingress-alb.yaml
+  # ---- Legacy API (deprecated — remove after full microservices cutover) ----
+  # - api-deployment.yaml
+  # - api-service.yaml
 
 # Common labels added to ALL resources by Kustomize
 commonLabels:
@@ -40,8 +49,16 @@ commonLabels:
 
 # Image management: CI/CD pipeline overwrites these via `kustomize edit set image`
 images:
-  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-api
+  # Microservices
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-auth-service
     newTag: latest
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-channel-service
+    newTag: latest
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-vod-service
+    newTag: latest
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-chat-service
+    newTag: latest
+  # Other services
   - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-frontend
     newTag: latest
   - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-transcoder

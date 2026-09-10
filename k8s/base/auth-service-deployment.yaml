@@ -1,0 +1,129 @@
+# ==============================================================================
+# auth-service Kubernetes Deployment + Service + ServiceAccount
+# Port: 4001 | REST API: /api/auth/*
+# ==============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: streamforge-auth-sa
+  namespace: streamforge
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::AWS_ACCOUNT_ID:role/streamforge-api-irsa-role"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamforge-auth
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-auth
+    app.kubernetes.io/component: auth-service
+    app.kubernetes.io/part-of: streamforge
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: streamforge-auth
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: streamforge-auth
+        app.kubernetes.io/component: auth-service
+    spec:
+      serviceAccountName: streamforge-auth-sa
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: streamforge-auth
+      containers:
+        - name: auth-service
+          image: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-auth-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 4001
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "4001"
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: AWS_REGION
+            - name: DYNAMODB_TABLE_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: DYNAMODB_TABLE_PREFIX
+            - name: CHANNEL_SERVICE_URL
+              value: "http://streamforge-channel:4002"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: streamforge-secrets
+                  key: JWT_SECRET
+            - name: CLOUDFRONT_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: CLOUDFRONT_DOMAIN
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "150m", memory: "192Mi" }
+            limits:   { cpu: "500m", memory: "384Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities: { drop: ["ALL"] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamforge-auth
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-auth
+    app.kubernetes.io/component: auth-service
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: streamforge-auth
+  ports:
+    - name: http
+      port: 4001
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: streamforge-auth-hpa
+  namespace: streamforge
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: streamforge-auth
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

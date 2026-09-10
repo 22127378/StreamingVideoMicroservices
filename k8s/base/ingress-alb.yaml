@@ -21,6 +21,21 @@
 #   connections to route correctly to pod IPs (not node ports).
 # - Idle timeout is set to 3600s (1 hr) to keep long-lived WS connections alive.
 # ==============================================================================
+# ==============================================================================
+# StreamForge ALB Ingress — Microservices Routing
+#
+# Traffic routing after microservices decomposition:
+#   /api/auth/*    -> auth-service:4001
+#   /api/channels/* -> channel-service:4002
+#   /api/vods/*   -> vod-service:4003
+#   /api/streams/* -> channel-service:4002 (stream key mgmt)
+#   /api/chat/*   -> chat-service:4004 (REST viewer count)
+#   /ws/*          -> chat-service:4004 (WebSocket, idle_timeout=3600s)
+#   /*             -> streamforge-frontend:80 (SPA catch-all)
+#
+# Security: X-Origin-Verify header required (CloudFront-only access)
+# TLS: ACM certificate, HTTP->HTTPS redirect
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -77,7 +92,7 @@ spec:
   rules:
     - http:
         paths:
-          # 1. HTTP -> HTTPS redirect
+          # HTTP -> HTTPS redirect (applies to all non-SNI requests)
           - path: /
             pathType: Prefix
             backend:
@@ -86,28 +101,63 @@ spec:
                 port:
                   name: use-annotation
 
-    - host: "CLOUDFRONT_DOMAIN"  # Replace with actual CloudFront domain or custom domain
+    - host: "CLOUDFRONT_DOMAIN"  # Replace with actual domain
       http:
         paths:
-          # 2. REST API routes
-          - path: /api
+          # 1. Auth Service: /api/auth/*
+          - path: /api/auth
             pathType: Prefix
             backend:
               service:
-                name: streamforge-api
+                name: streamforge-auth
                 port:
-                  name: http
+                  number: 4001
 
-          # 3. WebSocket Live Chat routes
+          # 2. Channel Service: /api/channels/*, /api/streams/*
+          - path: /api/channels
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-channel
+                port:
+                  number: 4002
+
+          - path: /api/streams
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-channel
+                port:
+                  number: 4002
+
+          # 3. VOD Service: /api/vods/*
+          - path: /api/vods
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-vod
+                port:
+                  number: 4003
+
+          # 4. Chat REST: /api/chat/* (viewer count queries)
+          - path: /api/chat
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-chat
+                port:
+                  number: 4004
+
+          # 5. WebSocket: /ws (long idle_timeout=3600 set at LB annotations above)
           - path: /ws
             pathType: Prefix
             backend:
               service:
-                name: streamforge-api
+                name: streamforge-chat
                 port:
-                  number: 4000
+                  number: 4004
 
-          # 4. SPA catch-all (must be last)
+          # 6. SPA catch-all (MUST be last — matches everything else)
           - path: /
             pathType: Prefix
             backend:
