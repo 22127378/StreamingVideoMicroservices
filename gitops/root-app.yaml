@@ -47,7 +47,7 @@ spec:
   # Source: the gitops/apps/ directory contains child Application manifests
   source:
     # Replace with your actual GitHub repository URL
-    repoURL: https://github.com/YOUR_ORG/streamforge.git
+    repoURL: https://github.com/22127378/StreamingVideoMicroservices.git
     targetRevision: HEAD  # Always sync from the latest commit on default branch
     path: gitops/apps     # Directory containing child Application YAML files
 
