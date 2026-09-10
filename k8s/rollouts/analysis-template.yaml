@@ -1,0 +1,155 @@
+# ==============================================================================
+# StreamForge - Argo Rollouts AnalysisTemplates
+#
+# AnalysisTemplates define automated health gates that run concurrently during
+# each Canary pause step. If ANY metric fails its success condition, Argo
+# Rollouts automatically aborts the canary and rolls back to the stable version.
+#
+# Two templates are defined:
+#
+# 1. streamforge-api-success-rate
+#    Measures HTTP 5xx error rate against total requests on the canary service.
+#    Pass condition: error rate < 1% over a 2-minute window.
+#    Data source: Prometheus (kube-prometheus-stack) querying Nginx/Express metrics.
+#
+# 2. streamforge-api-latency-p99
+#    Measures p99 API response latency on the canary service.
+#    Pass condition: p99 latency < 500ms over a 2-minute window.
+#    Data source: Prometheus http_request_duration_seconds histogram.
+#
+# Both templates use a Prometheus provider pointed at the in-cluster
+# Prometheus service (kube-prometheus-stack default endpoint).
+# Replace PROMETHEUS_URL if using a managed Prometheus (e.g. Amazon Managed Prometheus).
+# ==============================================================================
+
+# ---- Template 1: HTTP Success Rate (Error Rate < 1%) ----
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: streamforge-api-success-rate
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: streamforge
+spec:
+  args:
+    # Injected by the Rollout spec at runtime (canary service name)
+    - name: service-name
+
+  metrics:
+    - name: http-success-rate
+      # Run analysis every 2 minutes, require 3 consecutive successes to pass
+      interval: 2m
+      count: 3
+      successCondition: result[0] >= 0.99   # >= 99% success rate (< 1% errors)
+      failureLimit: 1                        # 1 failure immediately triggers rollback
+
+      provider:
+        prometheus:
+          address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            sum(
+              rate(
+                http_requests_total{
+                  job="streamforge-api",
+                  service="{{ args.service-name }}",
+                  status!~"5.."
+                }[2m]
+              )
+            )
+            /
+            sum(
+              rate(
+                http_requests_total{
+                  job="streamforge-api",
+                  service="{{ args.service-name }}"
+                }[2m]
+              )
+            )
+
+---
+# ---- Template 2: API p99 Latency (< 500ms) ----
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: streamforge-api-latency-p99
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: streamforge
+spec:
+  args:
+    - name: service-name
+
+  metrics:
+    - name: p99-latency-ms
+      interval: 2m
+      count: 3
+      # p99 must be below 500ms (0.5 seconds expressed in seconds)
+      successCondition: result[0] <= 0.5
+      failureLimit: 1
+
+      provider:
+        prometheus:
+          address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(
+              0.99,
+              sum(
+                rate(
+                  http_request_duration_seconds_bucket{
+                    job="streamforge-api",
+                    service="{{ args.service-name }}"
+                  }[2m]
+                )
+              ) by (le)
+            )
+
+---
+# ---- Template 3: WebSocket Chat Connection Drop Rate (< 0.1%) ----
+# Validates that WebSocket connections remain stable during canary deployment.
+# A canary version that causes WS disconnections is rolled back immediately.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: streamforge-api-ws-stability
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: analysis
+    app.kubernetes.io/part-of: streamforge
+spec:
+  args:
+    - name: service-name
+
+  metrics:
+    - name: websocket-connection-stability
+      interval: 2m
+      count: 3
+      # Connection drop rate must be < 0.1% (>= 99.9% stability)
+      successCondition: result[0] >= 0.999
+      failureLimit: 1
+
+      provider:
+        prometheus:
+          address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+          query: |
+            1 - (
+              sum(
+                rate(
+                  websocket_connections_dropped_total{
+                    service="{{ args.service-name }}"
+                  }[2m]
+                )
+              )
+              /
+              sum(
+                rate(
+                  websocket_connections_total{
+                    service="{{ args.service-name }}"
+                  }[2m]
+                )
+              )
+            )

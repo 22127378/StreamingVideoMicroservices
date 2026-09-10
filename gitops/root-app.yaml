@@ -1,0 +1,84 @@
+# ==============================================================================
+# StreamForge - ArgoCD App-of-Apps Root Application
+#
+# This is the "root" ArgoCD Application that implements the App-of-Apps pattern.
+# It manages a "apps/" directory containing individual ArgoCD Application
+# definitions for each StreamForge component. ArgoCD syncs this root app first,
+# which in turn creates and manages all child applications automatically.
+#
+# App-of-Apps Structure:
+#   gitops/root-app.yaml          <- This file (bootstrap entry point)
+#     |-- gitops/apps/streamforge-base.yaml       <- k8s/base/ Kustomize layer
+#     |-- gitops/apps/streamforge-rollouts.yaml   <- k8s/rollouts/ Argo Rollouts
+#
+# Deployment Flow (GitOps):
+#   Developer git push
+#     -> GitHub Actions: build image, push to ECR, update image tag in k8s/base/kustomization.yaml
+#     -> ArgoCD detects drift (kustomization.yaml changed)
+#     -> ArgoCD syncs: applies new Rollout to EKS
+#     -> Argo Rollouts: begins Canary progression (10% -> 30% -> 60% -> 100%)
+#     -> AnalysisTemplates: validate HTTP success rate & latency at each step
+#     -> Auto-promote (success) or Auto-rollback (failure)
+#
+# Prerequisites (install once in EKS cluster):
+#   kubectl create namespace argocd
+#   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+#   kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+# ==============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: streamforge-root
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: streamforge-root
+    app.kubernetes.io/part-of: streamforge
+    app.kubernetes.io/managed-by: argocd
+  # Cascade deletion: deleting this App deletes all child apps
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Notify Slack on sync events (optional, requires ArgoCD notification controller)
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: streamforge-deploys
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: streamforge-alerts
+spec:
+  project: default
+
+  # Source: the gitops/apps/ directory contains child Application manifests
+  source:
+    # Replace with your actual GitHub repository URL
+    repoURL: https://github.com/YOUR_ORG/streamforge.git
+    targetRevision: HEAD  # Always sync from the latest commit on default branch
+    path: gitops/apps     # Directory containing child Application YAML files
+
+  destination:
+    server: https://kubernetes.default.svc  # In-cluster (ArgoCD runs inside EKS)
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true      # Remove Kubernetes resources deleted from Git
+      selfHeal: true   # Revert manual kubectl changes (drift correction)
+    syncOptions:
+      - CreateNamespace=true       # Auto-create namespaces if missing
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true             # Delete old resources only after new ones are healthy
+      - ApplyOutOfSyncOnly=true    # Only apply resources that have changed (faster sync)
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Health assessment: ArgoCD considers this app healthy when all child apps are healthy
+  ignoreDifferences:
+    # Ignore runtime-managed fields to prevent false drift detection
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # HPA manages this at runtime
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers:
+        - /spec/replicas

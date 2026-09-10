@@ -1,0 +1,21 @@
+# ==============================================================================
+# StreamForge - Kustomize for Argo Rollouts Layer
+# ==============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: streamforge
+
+resources:
+  - api-rollout.yaml
+  - analysis-template.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: streamforge
+  environment: production
+
+# CI/CD updates this image tag automatically via:
+#   kustomize edit set image AWS_ACCOUNT_ID.../streamforge-api=:v1.x.y
+images:
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-api
+    newTag: latest

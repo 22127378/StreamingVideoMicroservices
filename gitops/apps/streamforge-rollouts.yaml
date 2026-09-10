@@ -1,0 +1,63 @@
+# ==============================================================================
+# Child Application 2: StreamForge Rollouts (Canary + AnalysisTemplates)
+#
+# Syncs the k8s/rollouts/ directory which contains:
+# - api-rollout.yaml    : Argo Rollout replacing the API Deployment
+# - analysis-template.yaml: Prometheus-based automated health gates
+#
+# IMPORTANT: This application must sync AFTER streamforge-base (Services and
+# Namespace must exist before the Rollout CRD can reference them). ArgoCD sync
+# waves handle this ordering via annotations:
+#   wave 1 = streamforge-base
+#   wave 2 = streamforge-rollouts (this app)
+# ==============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: streamforge-rollouts
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: streamforge-rollouts
+    app.kubernetes.io/part-of: streamforge
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Sync wave 2: deploy after base layer (wave 1) is fully healthy
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/YOUR_ORG/streamforge.git
+    targetRevision: HEAD
+    path: k8s/rollouts
+    # Plain YAML directory (no Kustomize needed for rollouts)
+    directory:
+      recurse: false
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: streamforge
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # Namespace created by streamforge-base
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers:
+        - /spec/replicas           # HPA manages this
+        - /status/currentPodHash   # Runtime-managed by Argo Rollouts controller

@@ -1,0 +1,56 @@
+# ==============================================================================
+# Child Application 1: StreamForge Base Infrastructure (Namespace, Services, KEDA)
+#
+# Syncs the k8s/base/ Kustomize layer which contains:
+# - Namespace, ConfigMap, Secret template
+# - API & Frontend Deployments + Services + HPAs
+# - ALB Ingress
+# - KEDA ScaledObject + Transcoder Worker Deployment
+# ==============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: streamforge-base
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: streamforge-base
+    app.kubernetes.io/part-of: streamforge
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/YOUR_ORG/streamforge.git
+    targetRevision: HEAD
+    path: k8s/base
+    # Kustomize build options for the base layer
+    kustomize:
+      version: v5.0.0
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: streamforge
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Health checks: ArgoCD marks app Healthy only when all pods pass readiness probes
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas   # KEDA + HPA manage replica count at runtime
