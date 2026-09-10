@@ -191,7 +191,7 @@ class PlayerController {
 
     // Mount Live Chat component
     import('./chat.js').then(({ chatController }) => {
-      chatController.mount(channel.channel_id);
+      chatController.mount(channel.channel_id, channel);
     });
   }
 

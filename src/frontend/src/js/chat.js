@@ -20,9 +20,11 @@ class ChatController {
   /**
    * Mounts the live chat panel and connects to WebSocket & BroadcastChannel.
    * @param {string} channelId 
+   * @param {object} channelObj
    */
-  async mount(channelId) {
+  async mount(channelId, channelObj = null) {
     this.currentChannelId = channelId;
+    this.channel = channelObj || (await api.getChannelById(channelId));
     const container = document.getElementById('live-chat-column');
     if (!container) return;
 
@@ -198,12 +200,11 @@ class ChatController {
         }, 5000);
       };
 
-      this.ws.onerror = () => {
-        // Fallback to demo chat simulation if backend server is not running
-        this.startDemoChatStream();
+      this.ws.onerror = (e) => {
+        console.warn('[ChatController] WebSocket error encountered. Realtime BroadcastChannel fallback active.');
       };
     } catch (err) {
-      this.startDemoChatStream();
+      console.warn('[ChatController] WebSocket connection failed. Using local BroadcastChannel.');
     }
   }
 
@@ -231,7 +232,29 @@ class ChatController {
   async sendMessage(text, user) {
     const currentUser = user || (await api.getMe());
     const username = currentUser?.user?.displayName || currentUser?.user?.username || 'Guest';
-    const isBroadcaster = currentUser?.channel?.channel_id === this.currentChannelId || currentUser?.user?.userId === this.currentChannelId;
+
+    // Accurately determine user role in this channel from Database
+    const role = api.getUserRoleInChannel(this.currentChannelId, currentUser, this.channel);
+
+    let badges = [];
+    let nameColor = '#ADADB8'; // Default guest / viewer color
+
+    if (role === 'broadcaster') {
+      badges = ['broadcaster'];
+      nameColor = '#FF4655'; // Broadcaster Neon Red
+    } else if (role === 'subscriber') {
+      badges = ['subscriber'];
+      nameColor = '#00F0FF'; // Subscriber Cyan
+    } else if (role === 'vip') {
+      badges = ['vip'];
+      nameColor = '#FFD700'; // VIP Gold
+    } else if (role === 'moderator') {
+      badges = ['moderator'];
+      nameColor = '#00F59B'; // Moderator Green
+    } else if (currentUser?.user) {
+      badges = [];
+      nameColor = '#E4E4E7'; // Regular viewer
+    }
 
     const msg = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
@@ -240,11 +263,11 @@ class ChatController {
         userId: currentUser?.user?.userId || 'usr_guest',
         username: username,
         displayName: username,
-        badges: isBroadcaster ? ['broadcaster', 'subscriber'] : ['subscriber'],
+        badges: badges,
         isGuest: !currentUser?.user
       },
       text: text,
-      color: isBroadcaster ? '#FF4655' : '#00F0FF',
+      color: nameColor,
       timestamp: new Date().toISOString()
     };
 
@@ -315,38 +338,6 @@ class ChatController {
     if (counter) {
       counter.textContent = this.formatNumber(count);
     }
-  }
-
-  startDemoChatStream() {
-    if (this.demoInterval) clearInterval(this.demoInterval);
-
-    const demoSenders = [
-      { name: 'ViperMain', color: '#00F0FF', badges: ['subscriber'], texts: ['Insane clutch right there!', 'Let us go!!', 'Great aim!'] },
-      { name: 'CloudArchitect', color: '#00F59B', badges: ['moderator'], texts: ['Welcome everyone to the stream!', 'Audio and 1080p stream looking crisp.'] },
-      { name: 'RadiantGamer', color: '#FFB800', badges: ['vip'], texts: ['GG WP!', 'What sensitivity are you using?'] },
-      { name: 'SentinelsFan', color: '#FF4655', badges: ['subscriber'], texts: ['TenZ is unreal today!', 'Next level crosshair placement.'] }
-    ];
-
-    this.demoInterval = setInterval(() => {
-      if (!window.location.hash.startsWith('#watch/')) {
-        clearInterval(this.demoInterval);
-        return;
-      }
-      const randomSender = demoSenders[Math.floor(Math.random() * demoSenders.length)];
-      const randomText = randomSender.texts[Math.floor(Math.random() * randomSender.texts.length)];
-
-      this.appendMessage({
-        id: `demo_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-        sender: {
-          username: randomSender.name,
-          displayName: randomSender.name,
-          badges: randomSender.badges
-        },
-        text: randomText,
-        color: randomSender.color,
-        timestamp: new Date().toISOString()
-      }, false);
-    }, 6000);
   }
 
   escapeHtml(str) {

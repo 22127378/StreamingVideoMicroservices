@@ -274,12 +274,21 @@ class ApiClient {
     }
   }
 
-  // --- Follow Channels Endpoints & Persistence ---
+  // --- Follow Channels & Followers Role Database ---
   getFollowedChannelIds() {
     try {
       return JSON.parse(localStorage.getItem('streamforge_followed_channel_ids') || '["chn_tenz", "chn_faker"]');
     } catch (e) {
       return ['chn_tenz', 'chn_faker'];
+    }
+  }
+
+  getChannelFollowers(channelId) {
+    try {
+      const db = JSON.parse(localStorage.getItem('streamforge_channel_followers_db') || '{}');
+      return db[channelId] || [];
+    } catch (e) {
+      return [];
     }
   }
 
@@ -297,16 +306,40 @@ class ApiClient {
   async toggleFollow(channelId, channelObj = null) {
     let list = this.getFollowedChannelIds();
     const isNowFollowing = !list.includes(channelId);
+    const currentUser = await this.getMe();
 
     if (isNowFollowing) {
       list.push(channelId);
+      // Add to channel followers database
+      try {
+        const db = JSON.parse(localStorage.getItem('streamforge_channel_followers_db') || '{}');
+        if (!db[channelId]) db[channelId] = [];
+        if (currentUser?.user && !db[channelId].some(u => u.userId === currentUser.user.userId)) {
+          db[channelId].push({
+            userId: currentUser.user.userId,
+            username: currentUser.user.username,
+            displayName: currentUser.user.displayName || currentUser.user.username,
+            role: 'subscriber',
+            followedAt: new Date().toISOString()
+          });
+        }
+        localStorage.setItem('streamforge_channel_followers_db', JSON.stringify(db));
+      } catch (e) {}
     } else {
       list = list.filter(id => id !== channelId);
+      // Remove from channel followers database
+      try {
+        const db = JSON.parse(localStorage.getItem('streamforge_channel_followers_db') || '{}');
+        if (db[channelId] && currentUser?.user) {
+          db[channelId] = db[channelId].filter(u => u.userId !== currentUser.user.userId);
+          localStorage.setItem('streamforge_channel_followers_db', JSON.stringify(db));
+        }
+      } catch (e) {}
     }
 
     localStorage.setItem('streamforge_followed_channel_ids', JSON.stringify(list));
 
-    // Try sync with Backend API
+    // Sync with Backend API
     try {
       if (isNowFollowing) {
         await this.request(`/channels/${channelId}/follow`, { method: 'POST' });
@@ -316,6 +349,39 @@ class ApiClient {
     } catch (e) {}
 
     return { isFollowing: isNowFollowing };
+  }
+
+  getUserRoleInChannel(channelId, user, channelObj = null) {
+    if (!user || !user.user) return 'guest';
+
+    const uId = user.user.userId;
+    const uName = (user.user.username || '').toLowerCase();
+
+    // 1. Check Broadcaster (Owner of channel)
+    const chOwnerId = channelObj?.user_id || user.channel?.user_id;
+    const chStreamerUsername = (channelObj?.streamer_username || user.channel?.streamer_username || '').toLowerCase();
+    const chId = channelObj?.channel_id || user.channel?.channel_id;
+
+    if (
+      (chOwnerId && uId === chOwnerId) ||
+      (chStreamerUsername && uName === chStreamerUsername) ||
+      (chId && chId === channelId && user.channel?.channel_id === channelId) ||
+      (channelId && uId && channelId.includes(uId)) ||
+      (channelId && uName && channelId.toLowerCase().includes(uName))
+    ) {
+      return 'broadcaster';
+    }
+
+    // 2. Check Channel Follower / Subscriber Database
+    const followers = this.getChannelFollowers(channelId);
+    const isFollowerInDb = followers.some(f => f.userId === uId || f.username?.toLowerCase() === uName);
+    const isFollowedInList = this.getFollowedChannelIds().includes(channelId);
+
+    if (isFollowerInDb || isFollowedInList) {
+      return 'subscriber';
+    }
+
+    return 'viewer';
   }
 
   // --- Stream & VOD Endpoints ---

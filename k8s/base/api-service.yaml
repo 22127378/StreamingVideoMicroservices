@@ -1,0 +1,48 @@
+# ==============================================================================
+# StreamForge Backend API - Kubernetes Service & ServiceAccount
+#
+# Service: ClusterIP (ALB Ingress Controller handles external traffic routing).
+# ServiceAccount: annotated with IRSA role ARN so pods can call AWS APIs
+# (DynamoDB, S3, CloudFront Signer) without any static access keys.
+# ==============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: streamforge-api-sa
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: backend
+  annotations:
+    # IRSA: pods inherit this IAM Role's permissions via OIDC token exchange.
+    # Replace with actual ARN output from terraform module 03-iam-irsa.
+    eks.amazonaws.com/role-arn: "arn:aws:iam::AWS_ACCOUNT_ID:role/streamforge-api-irsa-role"
+    eks.amazonaws.com/token-expiration: "86400"  # 24h token rotation
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamforge-api
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: streamforge
+  annotations:
+    # ALB Ingress Controller health check configuration
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval-seconds: "15"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: streamforge-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http          # References containerPort name in Deployment
+      protocol: TCP
+    - name: websocket
+      port: 4000
+      targetPort: http          # WebSocket upgrades go through the same port
+      protocol: TCP

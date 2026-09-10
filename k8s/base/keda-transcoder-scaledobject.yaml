@@ -1,0 +1,191 @@
+# ==============================================================================
+# StreamForge FFmpeg Transcoder Worker - KEDA ScaledObject
+#
+# How it works:
+# 1. KEDA's SQS scaler polls the ApproximateNumberOfMessagesVisible attribute
+#    of the streamforge-transcode-queue every 30 seconds.
+# 2. When messages >= 1: KEDA scales the Deployment from 0 to N replicas.
+#    Each replica processes one SQS message (one video transcode job).
+# 3. When queue is empty for cooldownPeriod (5 min): KEDA scales back to 0,
+#    eliminating compute costs during idle periods (Scale-to-Zero).
+#
+# Scaling math:
+#   targetQueueLength = 1  -> 1 pod per message in queue
+#   Max pods = 10          -> handles burst of up to 10 concurrent video jobs
+#
+# IAM: KEDA operator uses its own IRSA role (module 08-keda) to call
+# sqs:GetQueueAttributes. Worker pods use a separate IRSA role (module 03-iam-irsa)
+# to call sqs:ReceiveMessage, sqs:DeleteMessage, s3:GetObject, s3:PutObject.
+# ==============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: streamforge-transcoder-scaledobject
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-transcoder
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: streamforge
+    app.kubernetes.io/managed-by: argocd
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: streamforge-transcoder-worker
+
+  # ---- Scaling Boundaries ----
+  minReplicaCount: 0    # True Scale-to-Zero when queue is empty
+  maxReplicaCount: 10   # Max concurrent FFmpeg transcode jobs
+
+  # ---- Cooldown / Polling ----
+  cooldownPeriod: 300   # Seconds to wait before scaling to 0 (5 min)
+  pollingInterval: 30   # Seconds between SQS queue depth checks
+
+  # ---- SQS Trigger ----
+  triggers:
+    - type: aws-sqs-queue
+      authenticationRef:
+        name: keda-aws-credentials  # TriggerAuthentication with IRSA
+      metadata:
+        queueURL: "https://sqs.ap-southeast-1.amazonaws.com/AWS_ACCOUNT_ID/streamforge-transcode-queue"
+        queueLength: "1"           # 1 pod per message -> serial processing per pod
+        awsRegion: "ap-southeast-1"
+        identityOwner: "operator"  # KEDA operator's IRSA role handles auth
+
+---
+# ==============================================================================
+# TriggerAuthentication: tells KEDA to use its IRSA role (operator identity)
+# for reading the SQS queue depth metric.
+# ==============================================================================
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-aws-credentials
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-transcoder
+    app.kubernetes.io/component: worker
+spec:
+  podIdentity:
+    provider: aws  # Uses EKS IRSA (OIDC token injection) - no static keys
+
+---
+# ==============================================================================
+# StreamForge FFmpeg Transcoder Worker - Kubernetes Deployment
+#
+# This Deployment is the KEDA scale target. At rest, it runs 0 replicas.
+# When KEDA detects messages in SQS it creates pods; each pod runs the
+# SQS long-polling worker that pulls 1 job, transcodes with FFmpeg, uploads
+# HLS segments to S3, updates DynamoDB, then deletes the SQS message.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamforge-transcoder-worker
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-transcoder
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: streamforge
+    app.kubernetes.io/managed-by: argocd
+spec:
+  # KEDA controls replica count; initial value must be 0
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: streamforge-transcoder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: streamforge-transcoder
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: streamforge
+    spec:
+      serviceAccountName: streamforge-worker-sa
+      automountServiceAccountToken: true
+
+      # Transcoder jobs are CPU-intensive; allow up to 600s for graceful shutdown
+      # (max expected single transcode duration for a 1GB 1080p video)
+      terminationGracePeriodSeconds: 600
+
+      containers:
+        - name: transcoder-worker
+          image: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-transcoder:latest
+          imagePullPolicy: Always
+
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: AWS_REGION
+            - name: SQS_QUEUE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: SQS_TRANSCODE_QUEUE_URL
+            - name: S3_RAW_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: S3_RAW_BUCKET
+            - name: S3_HLS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: S3_HLS_BUCKET
+            - name: DYNAMODB_TABLE_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: DYNAMODB_TABLE_PREFIX
+
+          # Transcoder is CPU-bound (FFmpeg multi-bitrate encoding)
+          resources:
+            requests:
+              cpu: "1000m"   # 1 full core per worker pod
+              memory: "1Gi"
+            limits:
+              cpu: "3000m"   # Burst up to 3 cores for 1080p encoding speed
+              memory: "3Gi"  # 1GB source video + intermediate buffers
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # FFmpeg writes temp files to /tmp
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
+
+          volumeMounts:
+            - name: tmp-workspace
+              mountPath: /tmp
+
+      volumes:
+        # Large ephemeral workspace for FFmpeg intermediate files
+        - name: tmp-workspace
+          emptyDir:
+            sizeLimit: 10Gi  # Enough for a 1GB source + 4 output bitrate streams
+
+      securityContext:
+        fsGroup: 1001
+
+---
+# ==============================================================================
+# ServiceAccount for Transcoder Worker Pods (IRSA)
+# ==============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: streamforge-worker-sa
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-transcoder
+    app.kubernetes.io/component: worker
+  annotations:
+    # Replace with actual worker IRSA role ARN from terraform module 03-iam-irsa
+    eks.amazonaws.com/role-arn: "arn:aws:iam::AWS_ACCOUNT_ID:role/streamforge-worker-irsa-role"
+    eks.amazonaws.com/token-expiration: "43200"  # 12h - shorter for worker pods

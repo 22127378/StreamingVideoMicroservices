@@ -1,0 +1,13 @@
+# ==============================================================================
+# StreamForge - Kubernetes Namespace
+# Isolates all StreamForge workloads in a dedicated namespace with
+# resource labels for observability and GitOps management.
+# ==============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge
+    app.kubernetes.io/managed-by: argocd
+    environment: production

@@ -1,0 +1,54 @@
+# ==============================================================================
+# StreamForge - Kustomize Base Configuration
+#
+# Kustomize is used to manage the base manifests and allow environment-specific
+# overlays (e.g. staging vs production) to patch values like replica counts,
+# image tags, and resource limits without duplicating YAML.
+#
+# Usage:
+#   Apply base directly:
+#     kubectl apply -k k8s/base/
+#
+#   Apply with image override (CI/CD):
+#     kustomize edit set image \
+#       AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-api=:v1.2.3
+#     kubectl apply -k k8s/base/
+#
+#   ArgoCD points its Application to this directory and syncs automatically.
+# ==============================================================================
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Namespace applied to all resources in this base
+namespace: streamforge
+
+# All resources in the base layer
+resources:
+  - namespace.yaml
+  - configmap-and-secret.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - keda-transcoder-scaledobject.yaml
+  - ingress-alb.yaml
+
+# Common labels added to ALL resources by Kustomize
+commonLabels:
+  app.kubernetes.io/part-of: streamforge
+  environment: production
+
+# Image management: CI/CD pipeline overwrites these via `kustomize edit set image`
+images:
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-api
+    newTag: latest
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-frontend
+    newTag: latest
+  - name: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-transcoder
+    newTag: latest
+
+# ConfigMap generator (alternative to inline ConfigMap for CI injection)
+# configMapGenerator:
+#   - name: streamforge-config
+#     envs:
+#       - .env.production

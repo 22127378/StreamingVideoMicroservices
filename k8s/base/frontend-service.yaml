@@ -1,0 +1,25 @@
+# ==============================================================================
+# StreamForge Frontend SPA - Kubernetes Service
+#
+# ClusterIP service; external traffic arrives via ALB Ingress Controller.
+# Port 80 is standard HTTP; the ALB listener handles TLS termination so the
+# pod-to-pod traffic inside the cluster stays plain HTTP.
+# ==============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamforge-frontend
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-frontend
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/part-of: streamforge
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: streamforge-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

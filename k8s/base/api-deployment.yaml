@@ -1,0 +1,206 @@
+# ==============================================================================
+# StreamForge Backend API - Kubernetes Deployment
+# Runs the Express REST API & WebSocket Live Chat Gateway on AWS EKS.
+#
+# Key design decisions:
+# - IRSA annotation delegates AWS credentials (DynamoDB, S3, CloudFront) to
+#   pod-level; no static keys are embedded.
+# - Liveness probe hits /health; Readiness probe hits /api/health so the ALB
+#   only routes traffic when the app has fully initialised AWS SDK clients.
+# - topologySpreadConstraints ensures pods are spread across AZs, tolerating
+#   the loss of a single Spot node or AZ without downtime.
+# - HPA targets 70% CPU to provide headroom for WebSocket broadcast spikes.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamforge-api
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: streamforge
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: streamforge-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0  # Zero-downtime rolling update
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: streamforge-api
+        app.kubernetes.io/component: backend
+        app.kubernetes.io/part-of: streamforge
+      annotations:
+        # Force pod restart when ConfigMap/Secret changes
+        kubectl.kubernetes.io/restartedAt: ""
+    spec:
+      serviceAccountName: streamforge-api-sa
+      automountServiceAccountToken: true
+
+      # Prefer spreading pods across AZs (tolerates 1 AZ failure)
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: streamforge-api
+
+      # Graceful pod termination: drain WebSocket connections before SIGTERM
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: api
+          # Image will be substituted by CI/CD pipeline (GitHub Actions kustomize edit)
+          image: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 4000
+              protocol: TCP
+
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "4000"
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: AWS_REGION
+            - name: DYNAMODB_TABLE_PREFIX
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: DYNAMODB_TABLE_PREFIX
+            - name: S3_RAW_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: S3_RAW_BUCKET
+            - name: S3_HLS_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: S3_HLS_BUCKET
+            - name: CLOUDFRONT_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: CLOUDFRONT_DOMAIN
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: streamforge-secrets
+                  key: JWT_SECRET
+            - name: CLOUDFRONT_KEY_PAIR_ID
+              valueFrom:
+                secretKeyRef:
+                  name: streamforge-secrets
+                  key: CLOUDFRONT_KEY_PAIR_ID
+            - name: CLOUDFRONT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: streamforge-secrets
+                  key: CLOUDFRONT_PRIVATE_KEY
+            - name: X_ORIGIN_VERIFY_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: streamforge-secrets
+                  key: X_ORIGIN_VERIFY_SECRET
+
+          # Liveness: restart container if the process is deadlocked
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness: hold traffic until AWS SDK clients are initialised
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
+
+      securityContext:
+        fsGroup: 1001
+
+---
+# ==============================================================================
+# HorizontalPodAutoscaler: scale 2-10 pods on CPU utilisation
+# ==============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: streamforge-api-hpa
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-api
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: streamforge-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300    # Wait 5 min before scaling down
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30

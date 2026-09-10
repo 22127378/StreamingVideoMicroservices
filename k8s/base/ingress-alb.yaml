@@ -1,0 +1,117 @@
+# ==============================================================================
+# StreamForge - AWS ALB Ingress (Kubernetes IngressClass: alb)
+#
+# Traffic flow:
+#   Internet -> CloudFront CDN
+#     -> ALB (validates X-Origin-Verify secret header; rejects direct access)
+#       -> /api/*  -> streamforge-api:80  (REST API + WebSocket /ws upgrade)
+#       -> /ws/*   -> streamforge-api:80  (explicit WebSocket path)
+#       -> /*      -> streamforge-frontend:80  (SPA catch-all)
+#
+# Security:
+# - The annotation `alb.ingress.kubernetes.io/conditions.*` configures a
+#   fixed-response 403 rule for requests that do NOT carry the secret header,
+#   enforcing that only CloudFront (which injects X-Origin-Verify) can reach
+#   the ALB directly.
+# - TLS is terminated at the ALB using an ACM certificate; traffic inside EKS
+#   is plain HTTP.
+#
+# WebSocket support:
+# - `alb.ingress.kubernetes.io/target-type: ip` is required for WebSocket
+#   connections to route correctly to pod IPs (not node ports).
+# - Idle timeout is set to 3600s (1 hr) to keep long-lived WS connections alive.
+# ==============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: streamforge-ingress
+  namespace: streamforge
+  labels:
+    app.kubernetes.io/name: streamforge-ingress
+    app.kubernetes.io/part-of: streamforge
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    # ---- Core ALB Controller Annotations ----
+    kubernetes.io/ingress.class: "alb"
+    alb.ingress.kubernetes.io/scheme: "internet-facing"
+    alb.ingress.kubernetes.io/target-type: "ip"  # Required for WebSocket (pod IP routing)
+    alb.ingress.kubernetes.io/load-balancer-name: "streamforge-alb"
+
+    # ---- TLS / HTTPS ----
+    # Replace CERTIFICATE_ARN with the ACM certificate ARN for your domain
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:ap-southeast-1:AWS_ACCOUNT_ID:certificate/CERTIFICATE_ARN"
+    alb.ingress.kubernetes.io/ssl-policy: "ELBSecurityPolicy-TLS13-1-2-2021-06"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/actions.ssl-redirect: >
+      {"type": "redirect", "redirectConfig": {"protocol": "HTTPS", "statusCode": "HTTP_301"}}
+
+    # ---- CloudFront-Only Access: Reject requests without secret header ----
+    # The secret value must match the X-Origin-Verify header that CloudFront injects.
+    # Populated from Secret streamforge-secrets.X_ORIGIN_VERIFY_SECRET at deploy time.
+    alb.ingress.kubernetes.io/conditions.verify-origin: >
+      [{"field":"http-header","httpHeaderConfig":{"httpHeaderName":"X-Origin-Verify","values":["${X_ORIGIN_VERIFY_SECRET}"]}}]
+
+    # ---- WebSocket Idle Timeout ----
+    alb.ingress.kubernetes.io/load-balancer-attributes: >
+      idle_timeout.timeout_seconds=3600,
+      routing.http2.enabled=true,
+      access_logs.s3.enabled=false
+
+    # ---- Health Check ----
+    alb.ingress.kubernetes.io/healthcheck-path: "/health"
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/success-codes: "200"
+
+    # ---- Target Group Attributes ----
+    alb.ingress.kubernetes.io/target-group-attributes: >
+      stickiness.enabled=false,
+      deregistration_delay.timeout_seconds=30
+
+    # ---- Security Groups ----
+    # EKS security group IDs output from terraform module 07-eks
+    alb.ingress.kubernetes.io/security-groups: "sg-PLACEHOLDER_EKS_SG"
+
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          # 1. HTTP -> HTTPS redirect
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ssl-redirect
+                port:
+                  name: use-annotation
+
+    - host: "CLOUDFRONT_DOMAIN"  # Replace with actual CloudFront domain or custom domain
+      http:
+        paths:
+          # 2. REST API routes
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-api
+                port:
+                  name: http
+
+          # 3. WebSocket Live Chat routes
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-api
+                port:
+                  number: 4000
+
+          # 4. SPA catch-all (must be last)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: streamforge-frontend
+                port:
+                  name: http
