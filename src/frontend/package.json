@@ -1,6 +1,7 @@
 {
   "name": "streamforge-frontend",
   "version": "1.0.0",
+  "type": "module",
   "description": "StreamForge - Twitch-Style Video Streaming Frontend (SPA)",
   "scripts": {
     "dev": "vite",

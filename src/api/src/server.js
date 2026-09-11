@@ -71,7 +71,7 @@ chatGateway.init(server);
 app.use(errorHandler);
 
 if (process.env.NODE_ENV !== 'test') {
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`[StreamForge API] Server running on port ${PORT}`);
     console.log(`[Health Check] Available at http://localhost:${PORT}/health`);
     console.log(`[Live Chat WS] WebSocket Gateway listening at ws://localhost:${PORT}/ws`);
