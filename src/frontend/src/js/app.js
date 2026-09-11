@@ -4,7 +4,7 @@
  */
 
 import { api } from './api.js';
-import { MOCK_CHANNELS, MOCK_CATEGORIES, MOCK_FEATURED_STREAM } from './mockData.js';
+
 
 class StreamForgeApp {
   constructor() {
@@ -191,7 +191,16 @@ class StreamForgeApp {
 
   renderBrowseView() {
     const main = document.getElementById('main-content');
-    const featured = this.channels[0] || MOCK_FEATURED_STREAM;
+    const featured = this.channels[0] || null;
+
+    if (!featured) {
+      main.innerHTML = `
+        <div class="browse-container fade-in" style="padding-bottom: 40px; display: flex; align-items: center; justify-content: center; height: 50vh;">
+          <p style="color: var(--text-muted); font-size: 1.2rem;">No live channels currently available.</p>
+        </div>
+      `;
+      return;
+    }
 
     main.innerHTML = `
       <div class="browse-container fade-in" style="padding-bottom: 40px;">

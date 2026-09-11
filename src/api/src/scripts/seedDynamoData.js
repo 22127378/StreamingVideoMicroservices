@@ -3,15 +3,15 @@
  * Seeds initial users, channels, categories, and VODs into Amazon DynamoDB tables.
  */
 
-import { PutCommand } from '@aws-sdk/lib-dynamodb';
-import { dynamoDocClient } from '../config/awsConfig.js';
-import bcrypt from 'bcryptjs';
+const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+const { dynamoDocClient } = require('../config/aws.js');
+const bcrypt = require('bcryptjs');
 
 const USERS_TABLE = process.env.DYNAMODB_USERS_TABLE || 'streamforge-users';
 const CHANNELS_TABLE = process.env.DYNAMODB_CHANNELS_TABLE || 'streamforge-channels';
 const VIDEOS_TABLE = process.env.DYNAMODB_VIDEOS_TABLE || 'streamforge-videos';
 
-export async function seedDatabase() {
+async function seedDatabase() {
   console.log('[Seeder] Starting AWS DynamoDB database seeding...');
 
   const passwordHash = await bcrypt.hash('Password123!', 10);

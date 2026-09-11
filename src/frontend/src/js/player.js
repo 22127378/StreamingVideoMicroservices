@@ -5,7 +5,7 @@
 
 import Hls from 'hls.js';
 import { api } from './api.js';
-import { MOCK_CHANNELS } from './mockData.js';
+
 
 class PlayerController {
   constructor() {
@@ -26,7 +26,13 @@ class PlayerController {
 
     let channel = await api.getChannelById(channelId);
     if (!channel) {
-      channel = MOCK_CHANNELS[0];
+      const allChannels = await api.getChannels();
+      channel = allChannels.find(c => c.channel_id === channelId) || allChannels[0];
+    }
+
+    if (!channel) {
+      this.showOfflineState(channelId);
+      return;
     }
     this.currentChannel = channel;
 
@@ -184,7 +190,9 @@ class PlayerController {
       if (statsRes) statsRes.textContent = '1920x1080 (Real Device Stream)';
       if (statsBitrate) statsBitrate.textContent = 'Direct Hardware Capture (0ms Latency)';
     } else {
-      this.initHls(channel.playback_url || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+      const primaryUrl = channel.playback_url || 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8';
+      const backupUrl = channel.backup_playback_url || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+      this.initHls(primaryUrl, backupUrl);
     }
 
     this.bindPlayerEvents();
@@ -195,10 +203,63 @@ class PlayerController {
     });
   }
 
-  initHls(streamUrl) {
+  showOfflineState(channelId) {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    main.innerHTML = `
+      <div class="watch-layout fade-in" style="display: flex; justify-content: center; align-items: center; min-height: 70vh;">
+        <div style="text-align: center; max-width: 480px; padding: 32px; background: var(--bg-secondary); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent-purple); margin-bottom: 16px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <h2 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 8px;">Kênh Chưa Phát Sóng</h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">Kênh này hiện đang offline hoặc tạm ngừng phát sóng.</p>
+          <button class="btn btn-primary" onclick="window.location.hash='#browse'" style="border-radius: var(--radius-full); padding: 10px 24px;">Khám Phá Kênh Đang Live</button>
+        </div>
+      </div>
+    `;
+  }
+
+  showPlaybackError(backupUrl = null) {
+    const container = document.getElementById('player-container');
+    if (!container) return;
+    const existing = document.getElementById('player-error-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'player-error-overlay';
+    overlay.style.cssText = 'position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 25; color: #fff; text-align: center; padding: 20px;';
+    overlay.innerHTML = `
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="margin-bottom: 12px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 6px;">Không Thể Tải Luồng Livestream</h3>
+      <p style="font-size: 0.85rem; color: #a1a1aa; max-width: 380px; margin-bottom: 16px;">Đường truyền luồng video đang gặp sự cố mạng hoặc bị chặn bởi trình duyệt.</p>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-primary" id="btn-player-retry" style="font-size: 0.85rem; padding: 8px 18px;">Thử Lại (Retry)</button>
+        ${backupUrl ? `<button class="btn btn-secondary" id="btn-player-backup" style="font-size: 0.85rem; padding: 8px 18px;">Đổi Luồng Dự Phòng</button>` : ''}
+      </div>
+    `;
+    container.appendChild(overlay);
+
+    document.getElementById('btn-player-retry')?.addEventListener('click', () => {
+      overlay.remove();
+      if (this.currentChannel) {
+        this.initHls(this.currentChannel.playback_url || 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8', backupUrl);
+      }
+    });
+
+    document.getElementById('btn-player-backup')?.addEventListener('click', () => {
+      overlay.remove();
+      if (backupUrl) {
+        this.initHls(backupUrl, null);
+      }
+    });
+  }
+
+  initHls(streamUrl, backupUrl = null) {
     if (this.hls) {
       this.hls.destroy();
     }
+
+    let retryCount = 0;
+    const maxRetries = 2;
 
     if (Hls.isSupported()) {
       this.hls = new Hls({
@@ -228,8 +289,17 @@ class PlayerController {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.warn('[HLS.js] Network error encountered, attempting recovery...');
-              this.hls.startLoad();
+              if (retryCount < maxRetries) {
+                retryCount++;
+                console.warn(`[HLS.js] Network error encountered, attempting retry ${retryCount}...`);
+                this.hls.startLoad();
+              } else if (backupUrl && streamUrl !== backupUrl) {
+                console.warn('[HLS.js] Primary stream unreachable, switching to backup stream:', backupUrl);
+                this.initHls(backupUrl, null);
+              } else {
+                console.error('[HLS.js] Fatal network error, stream unreachable.');
+                this.showPlaybackError(backupUrl);
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.warn('[HLS.js] Media error encountered, recovering...');
@@ -237,7 +307,11 @@ class PlayerController {
               break;
             default:
               console.error('[HLS.js] Fatal unrecoverable error:', data);
-              this.hls.destroy();
+              if (backupUrl && streamUrl !== backupUrl) {
+                this.initHls(backupUrl, null);
+              } else {
+                this.showPlaybackError(backupUrl);
+              }
               break;
           }
         }
