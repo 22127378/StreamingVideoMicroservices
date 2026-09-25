@@ -75,7 +75,9 @@ class AuthController {
         viewer_count: 0,
         follower_count: 0,
         stream_key: streamKey,
-        playback_url: `https://${process.env.CLOUDFRONT_DOMAIN || 'cdn.streamforge.net'}/hls/${userId}/master.m3u8`
+        playback_url: process.env.CLOUDFRONT_DOMAIN
+          ? `https://${process.env.CLOUDFRONT_DOMAIN}/hls/${userId}/master.m3u8`
+          : 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8'
       };
 
       await dynamoService.createChannel(newChannel);

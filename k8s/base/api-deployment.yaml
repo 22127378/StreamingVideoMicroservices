@@ -61,7 +61,7 @@ spec:
       containers:
         - name: api
           # Image will be substituted by CI/CD pipeline (GitHub Actions kustomize edit)
-          image: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-api:latest
+          image: 037547369060.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge/api:latest
           imagePullPolicy: Always
           ports:
             - name: http

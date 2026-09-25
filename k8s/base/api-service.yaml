@@ -34,15 +34,15 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval-seconds: "15"
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app.kubernetes.io/name: streamforge-api
   ports:
     - name: http
       port: 80
-      targetPort: http          # References containerPort name in Deployment
+      targetPort: http
       protocol: TCP
     - name: websocket
       port: 4000
-      targetPort: http          # WebSocket upgrades go through the same port
+      targetPort: http
       protocol: TCP

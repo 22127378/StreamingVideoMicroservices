@@ -47,7 +47,7 @@ spec:
       authenticationRef:
         name: keda-aws-credentials  # TriggerAuthentication with IRSA
       metadata:
-        queueURL: "https://sqs.ap-southeast-1.amazonaws.com/AWS_ACCOUNT_ID/streamforge-transcode-queue"
+        queueURL: "https://sqs.ap-southeast-1.amazonaws.com/037547369060/streamforge-transcode-queue"
         queueLength: "1"           # 1 pod per message -> serial processing per pod
         awsRegion: "ap-southeast-1"
         identityOwner: "operator"  # KEDA operator's IRSA role handles auth
@@ -110,7 +110,7 @@ spec:
 
       containers:
         - name: transcoder-worker
-          image: AWS_ACCOUNT_ID.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge-transcoder:latest
+          image: 037547369060.dkr.ecr.ap-southeast-1.amazonaws.com/streamforge/transcoder-worker:latest
           imagePullPolicy: Always
 
           env:

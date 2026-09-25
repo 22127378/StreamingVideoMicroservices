@@ -176,9 +176,17 @@ class PlayerController {
 
     this.video = document.getElementById('streamforge-video');
 
-    // Check if watching active local hardware camera / screen broadcast
+    // Check ownership & active local hardware camera / screen broadcast
     const { webrtcHub } = await import('./webrtcHub.js');
-    if (channel.is_user_broadcast && webrtcHub.hasActiveStream()) {
+    const currentUser = JSON.parse(localStorage.getItem('streamforge_current_user') || 'null');
+    const isOwner = Boolean(currentUser && (
+      currentUser.channel?.channel_id === channel.channel_id ||
+      currentUser.user?.userId === channel.user_id ||
+      channel.channel_id.includes(currentUser.user?.userId || '___') ||
+      channel.is_user_broadcast
+    ));
+
+    if (webrtcHub.hasActiveStream()) {
       console.log('[PlayerController] Playing Real-time Hardware Device Broadcast Stream (Camera/Screen).');
       if (this.hls) this.hls.destroy();
       this.video.srcObject = webrtcHub.getCurrentStream();
@@ -189,10 +197,24 @@ class PlayerController {
       const statsBitrate = document.getElementById('stat-bitrate');
       if (statsRes) statsRes.textContent = '1920x1080 (Real Device Stream)';
       if (statsBitrate) statsBitrate.textContent = 'Direct Hardware Capture (0ms Latency)';
+    } else if (channel.is_live === 'false' && !channel.is_user_broadcast) {
+      // Streamer is currently offline
+      this.showOfflineOverlay(channel, isOwner);
     } else {
-      const primaryUrl = channel.playback_url || 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8';
-      const backupUrl = channel.backup_playback_url || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+      // Channel is live - filter out non-existent local dummy CDN domains
+      const hasValidPlaybackUrl = channel.playback_url && !channel.playback_url.includes('cdn.streamforge.net');
+      const primaryUrl = hasValidPlaybackUrl
+        ? channel.playback_url
+        : 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8';
+      const backupUrl = (channel.backup_playback_url && !channel.backup_playback_url.includes('cdn.streamforge.net'))
+        ? channel.backup_playback_url
+        : 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+
       this.initHls(primaryUrl, backupUrl);
+
+      if (isOwner) {
+        this.showOwnerCameraBanner();
+      }
     }
 
     this.bindPlayerEvents();
@@ -200,6 +222,96 @@ class PlayerController {
     // Mount Live Chat component
     import('./chat.js').then(({ chatController }) => {
       chatController.mount(channel.channel_id, channel);
+    });
+  }
+
+  showOfflineOverlay(channel, isOwner) {
+    const container = document.getElementById('player-container');
+    if (!container) return;
+    const existing = document.getElementById('player-offline-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'player-offline-overlay';
+    overlay.style.cssText = 'position: absolute; inset: 0; background: radial-gradient(circle, #18181b 0%, #09090b 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; color: #fff; text-align: center; padding: 24px;';
+    overlay.innerHTML = `
+      <div style="position: relative; margin-bottom: 16px;">
+        <img src="${channel.streamer_avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=offline'}" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #27272a; object-fit: cover;">
+        <span style="position: absolute; bottom: 0; right: 0; background: #71717a; color: #fff; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; text-transform: uppercase;">Offline</span>
+      </div>
+      <h2 style="font-size: 1.35rem; font-weight: 800; margin-bottom: 6px;">${channel.streamer_name || 'Streamer'} Chưa Bắt Đầu Phát Sóng</h2>
+      <p style="font-size: 0.9rem; color: #a1a1aa; max-width: 440px; margin-bottom: 20px; line-height: 1.5;">
+        ${isOwner 
+          ? 'Kênh cá nhân của bạn hiện đang ở trạng thái Offline. Bạn có thể mở Studio để bật WebCam / Screen Share hoặc phát thử luồng ngay tại đây!'
+          : 'Kênh hiện chưa phát sóng trực tiếp. Bạn có thể trò chuyện cùng mọi người tại khung Live Chat bên phải.'}
+      </p>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+        ${isOwner ? `
+          <button class="btn btn-primary" id="btn-go-studio" style="padding: 10px 22px; font-size: 0.9rem; border-radius: 9999px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+            Vào Studio Lên Sóng
+          </button>
+          <button class="btn btn-secondary" id="btn-quick-cam" style="padding: 10px 22px; font-size: 0.9rem; border-radius: 9999px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+            Bật Camera Ngay
+          </button>
+        ` : `
+          <button class="btn btn-primary" onclick="window.location.hash='#browse'" style="padding: 10px 22px; font-size: 0.9rem; border-radius: 9999px;">
+            Khám Phá Kênh Đang Live
+          </button>
+        `}
+        <button class="btn btn-outline" id="btn-sim-stream" style="padding: 10px 18px; font-size: 0.9rem; border-radius: 9999px;">
+          Phát Thử Luồng Test
+        </button>
+      </div>
+    `;
+    container.appendChild(overlay);
+
+    document.getElementById('btn-go-studio')?.addEventListener('click', () => {
+      window.location.hash = '#studio';
+    });
+
+    document.getElementById('btn-quick-cam')?.addEventListener('click', async () => {
+      overlay.remove();
+      const { webrtcHub } = await import('./webrtcHub.js');
+      await webrtcHub.startCameraStream();
+      if (webrtcHub.hasActiveStream()) {
+        if (this.hls) this.hls.destroy();
+        this.video.srcObject = webrtcHub.getCurrentStream();
+        this.video.play().catch(() => {});
+        this.updatePlayPauseIcon(true);
+      }
+    });
+
+    document.getElementById('btn-sim-stream')?.addEventListener('click', () => {
+      overlay.remove();
+      this.initHls('https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8', 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+    });
+  }
+
+  showOwnerCameraBanner() {
+    const container = document.getElementById('player-container');
+    if (!container || document.getElementById('owner-camera-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'owner-camera-banner';
+    banner.style.cssText = 'position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.85); border: 1px solid var(--accent-purple); border-radius: 8px; padding: 6px 12px; z-index: 22; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #fff;';
+    banner.innerHTML = `
+      <span>Bạn là chủ kênh:</span>
+      <button class="btn btn-primary" id="btn-switch-to-webcam" style="padding: 4px 10px; font-size: 0.75rem;">Bật WebCam của bạn</button>
+    `;
+    container.appendChild(banner);
+
+    document.getElementById('btn-switch-to-webcam')?.addEventListener('click', async () => {
+      banner.remove();
+      const { webrtcHub } = await import('./webrtcHub.js');
+      await webrtcHub.startCameraStream();
+      if (webrtcHub.hasActiveStream()) {
+        if (this.hls) this.hls.destroy();
+        this.video.srcObject = webrtcHub.getCurrentStream();
+        this.video.play().catch(() => {});
+        this.updatePlayPauseIcon(true);
+      }
     });
   }
 

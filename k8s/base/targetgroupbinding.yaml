@@ -1,0 +1,11 @@
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: streamforge-api-tgb
+  namespace: streamforge
+spec:
+  serviceRef:
+    name: streamforge-api
+    port: 4000
+  targetGroupARN: arn:aws:elasticloadbalancing:ap-southeast-1:037547369060:targetgroup/streamforge-api-tg/60cf5dccfba7bfc5
+  targetType: instance

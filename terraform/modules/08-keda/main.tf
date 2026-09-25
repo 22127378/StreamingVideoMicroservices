@@ -74,6 +74,10 @@ resource "helm_release" "keda" {
   version    = var.keda_chart_version
   namespace  = kubernetes_namespace.keda.metadata[0].name
 
+  timeout = 600 # 10 minutes
+  wait    = true
+  atomic  = false
+
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = aws_iam_role.keda_operator.arn

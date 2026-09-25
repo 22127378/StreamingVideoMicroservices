@@ -127,6 +127,7 @@ resource "aws_eks_node_group" "system_nodes" {
   node_role_arn   = aws_iam_role.nodes.arn
   subnet_ids      = var.private_subnet_ids
 
+  ami_type       = "AL2_x86_64"
   capacity_type  = "ON_DEMAND"
   instance_types = var.system_node_instance_types
 
@@ -162,6 +163,7 @@ resource "aws_eks_node_group" "spot_nodes" {
   node_role_arn   = aws_iam_role.nodes.arn
   subnet_ids      = var.private_subnet_ids
 
+  ami_type       = "AL2_x86_64"
   capacity_type  = "SPOT"
   instance_types = var.spot_node_instance_types
 

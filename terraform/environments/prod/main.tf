@@ -29,13 +29,14 @@ terraform {
   }
 
   # Remote State configuration (Provisioned via Layer 0 Bootstrap)
-  # backend "s3" {
-  #   bucket         = "streamforge-tf-state-<account-id>-us-east-1"
-  #   key            = "environments/prod/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "streamforge-tf-state-locks"
-  #   encrypt        = true
-  # }
+  backend "s3" {
+    bucket       = "streamforge-tf-state-037547369060-ap-southeast-1"
+    key          = "environments/prod/terraform.tfstate"
+    region       = "ap-southeast-1"
+    use_lockfile = true
+    encrypt      = true
+    kms_key_id   = "arn:aws:kms:ap-southeast-1:037547369060:key/b2bc8613-020e-4700-866b-6797fa98fd2e"
+  }
 }
 
 provider "aws" {

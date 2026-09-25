@@ -40,13 +40,13 @@ variable "cluster_endpoint_public_access_cidrs" {
 variable "system_node_instance_types" {
   description = "EC2 Instance types for Core System Node Group"
   type        = list(string)
-  default     = ["t3.medium", "t3a.medium"]
+  default     = ["t3.small", "t8i.small"]
 }
 
 variable "spot_node_instance_types" {
-  description = "EC2 Instance types for Spot Node Group (Compute optimized for FFmpeg)"
+  description = "EC2 Instance types for Spot Node Group (Free Tier eligible x86_64)"
   type        = list(string)
-  default     = ["c5.large", "c5a.large", "c6i.large", "m5.large"]
+  default     = ["t3.small", "t3.micro", "t8i.micro", "t8i.small"]
 }
 
 variable "spot_node_desired_size" {

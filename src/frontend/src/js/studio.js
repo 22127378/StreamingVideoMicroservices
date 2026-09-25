@@ -526,6 +526,8 @@ class StudioController {
       viewer_count: 1,
       is_live: 'true',
       is_user_broadcast: true,
+      playback_url: 'https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8',
+      backup_playback_url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
       started_at: new Date().toISOString()
     };
 
@@ -533,6 +535,14 @@ class StudioController {
     const filtered = activeList.filter(s => s.channel_id !== channel.channel_id);
     filtered.unshift(activeStream);
     localStorage.setItem('streamforge_user_live_streams', JSON.stringify(filtered));
+
+    // Sync with backend API so incognito tabs and viewers see this stream
+    try {
+      await api.request('/channels/broadcast/start', {
+        method: 'POST',
+        body: JSON.stringify(activeStream)
+      });
+    } catch (e) {}
 
     // Update UI in Studio
     document.getElementById('live-active-banner')?.classList.add('active');
@@ -572,6 +582,11 @@ class StudioController {
     const activeList = JSON.parse(localStorage.getItem('streamforge_user_live_streams') || '[]');
     const filtered = activeList.filter(s => s.channel_id !== channel.channel_id);
     localStorage.setItem('streamforge_user_live_streams', JSON.stringify(filtered));
+
+    // Sync with backend API
+    try {
+      api.request(`/channels/broadcast/stop/${channel.channel_id}`, { method: 'POST' }).catch(() => {});
+    } catch (e) {}
 
     document.getElementById('live-active-banner')?.classList.remove('active');
     const startBtn = document.getElementById('btn-start-broadcast');
