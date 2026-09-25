@@ -93,6 +93,23 @@ resource "aws_iam_policy" "api_policy" {
           var.s3_kms_key_arn,
           var.dynamodb_kms_key_arn
         ]
+      },
+      # IVS Access for dynamically managing Channels and Stream Keys
+      {
+        Sid    = "IVSAccess"
+        Effect = "Allow"
+        Action = [
+          "ivs:CreateChannel",
+          "ivs:DeleteChannel",
+          "ivs:GetChannel",
+          "ivs:ListChannels",
+          "ivs:CreateStreamKey",
+          "ivs:DeleteStreamKey",
+          "ivs:GetStreamKey",
+          "ivs:ListStreamKeys",
+          "ivs:StopStream"
+        ]
+        Resource = "*"
       }
     ]
   })

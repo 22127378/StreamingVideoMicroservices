@@ -202,3 +202,14 @@ module "cloudfront" {
   cloudfront_public_key_pem          = tls_private_key.cloudfront_signed_cookies.public_key_pem
   common_tags                        = var.common_tags
 }
+
+# ------------------------------------------------------------------------------
+# LAYER 5: AWS INTERACTIVE VIDEO SERVICE (IVS)
+# ------------------------------------------------------------------------------
+
+module "ivs" {
+  source = "../../modules/11-ivs"
+
+  project_name = var.project_name
+  common_tags  = var.common_tags
+}

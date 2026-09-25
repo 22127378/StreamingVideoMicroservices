@@ -72,3 +72,28 @@ output "github_actions_role_arn" {
   description = "The ARN of the IAM Role for GitHub Actions"
   value       = module.iam_irsa.github_actions_role_arn
 }
+
+# ------------------------------------------------------------------------------
+# IVS OUTPUTS
+# ------------------------------------------------------------------------------
+
+output "ivs_channel_arn" {
+  description = "The ARN of the IVS Master Channel"
+  value       = module.ivs.channel_arn
+}
+
+output "ivs_channel_ingest_endpoint" {
+  description = "The Ingest Endpoint for RTMP/WebRTC Broadcasting"
+  value       = module.ivs.channel_ingest_endpoint
+}
+
+output "ivs_channel_playback_url" {
+  description = "The HLS Playback URL for Viewers"
+  value       = module.ivs.channel_playback_url
+}
+
+output "ivs_stream_key_value" {
+  description = "The Stream Key Value (Sensitive)"
+  value       = module.ivs.stream_key_value
+  sensitive   = true
+}
