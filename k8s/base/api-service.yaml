@@ -16,7 +16,7 @@ metadata:
   annotations:
     # IRSA: pods inherit this IAM Role's permissions via OIDC token exchange.
     # Replace with actual ARN output from terraform module 03-iam-irsa.
-    eks.amazonaws.com/role-arn: "arn:aws:iam::AWS_ACCOUNT_ID:role/streamforge-api-irsa-role"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::037547369060:role/streamforge-api-irsa-role"
     eks.amazonaws.com/token-expiration: "86400"  # 24h token rotation
 
 ---

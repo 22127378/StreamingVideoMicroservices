@@ -78,11 +78,26 @@ spec:
                 configMapKeyRef:
                   name: streamforge-config
                   key: AWS_REGION
-            - name: DYNAMODB_TABLE_PREFIX
+            - name: DYNAMODB_TABLE_USERS
               valueFrom:
                 configMapKeyRef:
                   name: streamforge-config
-                  key: DYNAMODB_TABLE_PREFIX
+                  key: DYNAMODB_TABLE_USERS
+            - name: DYNAMODB_TABLE_CHANNELS
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: DYNAMODB_TABLE_CHANNELS
+            - name: DYNAMODB_TABLE_STREAMS
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: DYNAMODB_TABLE_STREAMS
+            - name: DYNAMODB_TABLE_FOLLOWS
+              valueFrom:
+                configMapKeyRef:
+                  name: streamforge-config
+                  key: DYNAMODB_TABLE_FOLLOWS
             - name: S3_RAW_BUCKET
               valueFrom:
                 configMapKeyRef:

@@ -6,12 +6,13 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:4000',
+        target: 'https://d17c0kiwp2waq7.cloudfront.net',
         changeOrigin: true
       },
       '/ws': {
-        target: 'ws://127.0.0.1:4000',
-        ws: true
+        target: 'wss://d17c0kiwp2waq7.cloudfront.net',
+        ws: true,
+        changeOrigin: true
       }
     }
   },
