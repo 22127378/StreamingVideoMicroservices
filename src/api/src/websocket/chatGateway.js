@@ -191,7 +191,7 @@ class ChatGateway {
     const chatPayload = {
       type: 'CHAT_MESSAGE',
       data: {
-        id: `msg_${uuidv4().replace(/-/g, '').slice(0, 16)}`,
+        id: data.id || `msg_${uuidv4().replace(/-/g, '').slice(0, 16)}`,
         channelId: senderMeta.channelId,
         sender: {
           userId: senderMeta.userId,

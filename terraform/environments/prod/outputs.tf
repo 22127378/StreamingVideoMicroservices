@@ -67,3 +67,8 @@ output "signed_cookies_key_pair_id" {
   description = "Key Pair ID for Signed Cookies"
   value       = module.cloudfront.signed_cookies_public_key_id
 }
+
+output "github_actions_role_arn" {
+  description = "The ARN of the IAM Role for GitHub Actions"
+  value       = module.iam_irsa.github_actions_role_arn
+}

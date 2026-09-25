@@ -1,0 +1,104 @@
+name: StreamForge CI/CD & GitOps
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# Permission required for AWS OIDC authentication
+permissions:
+  id-token: write
+  contents: write  # Needed to commit kustomization.yaml back to repo
+  pull-requests: write
+
+env:
+  AWS_REGION: "ap-southeast-1"
+  # Replace with actual OIDC Role ARN from terraform output
+  AWS_OIDC_ROLE_ARN: "arn:aws:iam::037547369060:role/github-actions-oidc-role"
+  ECR_REGISTRY: "037547369060.dkr.ecr.ap-southeast-1.amazonaws.com"
+  API_IMAGE_NAME: "streamforge/api"
+  WORKER_IMAGE_NAME: "streamforge/worker"
+
+jobs:
+  security-and-lint:
+    name: Security Scans (Checkov & Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov (Terraform IaC Scan)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          soft_fail: true # Prevent failing build on low severity for now
+
+      - name: Build API Image for Scanning
+        run: docker build -t streamforge-api:local ./src/api
+
+      - name: Run Trivy Vulnerability Scanner (API)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'streamforge-api:local'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  build-and-deploy:
+    name: Build, Push to ECR & Update GitOps
+    needs: security-and-lint
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set Image Tag
+        run: echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Build and Push API Image
+        run: |
+          IMAGE_URI=$ECR_REGISTRY/$API_IMAGE_NAME:$IMAGE_TAG
+          docker build -t $IMAGE_URI ./src/api
+          docker push $IMAGE_URI
+
+      - name: Build and Push Transcoder Worker Image
+        run: |
+          IMAGE_URI=$ECR_REGISTRY/$WORKER_IMAGE_NAME:$IMAGE_TAG
+          docker build -t $IMAGE_URI ./src/transcoder-worker
+          docker push $IMAGE_URI
+
+      - name: Update Kubernetes Kustomization (GitOps Trigger)
+        run: |
+          # Install kustomize
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          
+          # Navigate to base overlay and update images
+          cd k8s/base
+          ../../kustomize edit set image streamforge/api=$ECR_REGISTRY/$API_IMAGE_NAME:$IMAGE_TAG
+          ../../kustomize edit set image streamforge/worker=$ECR_REGISTRY/$WORKER_IMAGE_NAME:$IMAGE_TAG
+          
+          # Commit and Push back to main branch
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add kustomization.yaml
+          git commit -m "[CI] Update image tags to $IMAGE_TAG [skip ci]"
+          git push
+          
+          echo "✅ GitOps manifest updated! ArgoCD will now detect the drift and sync."

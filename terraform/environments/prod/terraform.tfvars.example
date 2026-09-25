@@ -1,7 +1,7 @@
 aws_region         = "us-east-1"
 project_name       = "streamforge"
 cluster_name       = "streamforge-eks-cluster"
-kubernetes_version = "1.30"
+kubernetes_version = "1.31"
 k8s_namespace      = "streamforge"
 vpc_cidr           = "10.0.0.0/16"
 single_nat_gateway = true

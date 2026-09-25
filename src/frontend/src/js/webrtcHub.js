@@ -22,6 +22,10 @@ class WebRTCHub {
    * Enumerates available video input devices (webcams, virtual cameras).
    */
   async getAvailableCameras() {
+    if (!navigator.mediaDevices) {
+      console.warn('[WebRTCHub] navigator.mediaDevices is undefined. Are you on HTTP instead of HTTPS or localhost?');
+      return [];
+    }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       this.availableCameras = devices.filter((d) => d.kind === 'videoinput');
@@ -39,6 +43,12 @@ class WebRTCHub {
   async startCameraStream(selectedCameraDeviceId = null) {
     this.stopCurrentStream();
 
+    if (!navigator.mediaDevices) {
+      alert('Vui lòng truy cập qua link http://localhost:5173 hoặc dùng HTTPS để bật Camera (quy định bảo mật của trình duyệt).');
+      this.currentStream = this.createVirtualStudioStream('Secure Context Required');
+      return this.currentStream;
+    }
+
     let videoTrack = null;
     let audioTrack = null;
 
@@ -52,6 +62,13 @@ class WebRTCHub {
       videoTrack = videoStream.getVideoTracks()[0] || null;
     } catch (errVideo) {
       console.warn('[WebRTCHub] Direct video capture failed:', errVideo.name, errVideo.message);
+      if (errVideo.name === 'NotAllowedError') {
+        alert('Trình duyệt của bạn đang chặn quyền truy cập Camera/Micro. Vui lòng nhấn vào biểu tượng ổ khóa cạnh thanh địa chỉ (URL) và cấp quyền Camera/Micro để Livestream.');
+      } else if (errVideo.name === 'NotFoundError') {
+        alert('Không tìm thấy Camera hoặc Microphone trên máy tính của bạn!');
+      } else if (errVideo.name === 'NotReadableError') {
+        alert('Lỗi: Camera của bạn đang bị phần mềm khác chiếm dụng (ví dụ như Zoom, OBS, Teams, Zalo, hoặc một tab khác). Vui lòng tắt phần mềm đó và thử lại.');
+      }
       // Try unconstrained fallback
       try {
         const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -101,6 +118,12 @@ class WebRTCHub {
   async startScreenStream() {
     this.stopCurrentStream();
 
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert('Trình duyệt của bạn không hỗ trợ Share Screen qua HTTP. Vui lòng truy cập http://localhost:5173 hoặc dùng HTTPS.');
+      this.currentStream = this.createVirtualStudioStream('Secure Context Required');
+      return this.currentStream;
+    }
+
     try {
       this.currentStream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
@@ -118,6 +141,9 @@ class WebRTCHub {
       return this.currentStream;
     } catch (err) {
       console.warn('[WebRTCHub] Screen share cancelled, using Virtual Studio fallback:', err.message);
+      if (err.name === 'NotAllowedError') {
+        alert('Bạn đã hủy chia sẻ màn hình hoặc trình duyệt không cho phép.');
+      }
       this.currentStream = this.createVirtualStudioStream('Screen Share Live Feed');
       return this.currentStream;
     }

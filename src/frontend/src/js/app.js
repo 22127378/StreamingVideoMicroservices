@@ -563,10 +563,9 @@ class StreamForgeApp {
         this.currentChannel = data.channel;
         this.renderUserHeader(true);
         closeModal();
-        this.showToast(`Welcome back, ${data.user.displayName || data.user.username}!`);
-        if (this.currentView === 'studio') {
-          this.renderStudioView();
-        }
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
       } catch (err) {
         alertBox.textContent = err.message || 'Login failed. Please check your credentials.';
         alertBox.style.display = 'block';
@@ -588,10 +587,9 @@ class StreamForgeApp {
         this.currentChannel = data.channel;
         this.renderUserHeader(true);
         closeModal();
-        this.showToast(`Account created! Welcome to StreamForge, ${data.user.displayName}!`);
-        if (this.currentView === 'studio') {
-          this.renderStudioView();
-        }
+        setTimeout(() => {
+          window.location.reload();
+        }, 500);
       } catch (err) {
         alertBox.textContent = err.message || 'Registration failed.';
         alertBox.style.display = 'block';

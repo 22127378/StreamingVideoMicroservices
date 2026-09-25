@@ -491,6 +491,11 @@ class StudioController {
 
       if (video && stream) {
         video.srcObject = stream;
+        try {
+          await video.play();
+        } catch (e) {
+          console.warn('[Studio] Auto-play prevented or failed:', e);
+        }
         if (placeholder) placeholder.style.display = 'none';
       }
     } catch (err) {
