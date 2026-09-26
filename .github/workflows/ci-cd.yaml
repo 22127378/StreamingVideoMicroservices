@@ -18,7 +18,7 @@ env:
   AWS_OIDC_ROLE_ARN: "arn:aws:iam::037547369060:role/github-actions-oidc-role"
   ECR_REGISTRY: "037547369060.dkr.ecr.ap-southeast-1.amazonaws.com"
   API_IMAGE_NAME: "streamforge/api"
-  WORKER_IMAGE_NAME: "streamforge/worker"
+  WORKER_IMAGE_NAME: "streamforge/transcoder-worker"
 
 jobs:
   security-and-lint:
